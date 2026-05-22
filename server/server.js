@@ -361,17 +361,20 @@ const parseResume = async (filePath, originalName) => {
                 if (text.trim().length < 50) {
                     console.log(`[OCR] Very little text found in ${originalName}, attempting OCR fallback...`);
                     try {
-                        const fileBlob = new Blob([dataBuffer], { type: 'application/pdf' });
+                        // Use Node.js FormData from form-data package (if available)
+                        // For now, fall back gracefully if OCR fails
+                        const FormData = require('form-data');
                         const formData = new FormData();
                         formData.append('apikey', process.env.OCR_API_KEY || 'helloworld');
-                        formData.append('file', fileBlob, originalName);
+                        formData.append('file', dataBuffer, originalName);
                         formData.append('filetype', 'pdf');
                         formData.append('isOverlayRequired', 'false');
                         formData.append('OCREngine', '1'); 
                         
                         const resOcr = await fetch('https://api.ocr.space/parse/image', { 
                             method: 'POST', 
-                            body: formData 
+                            body: formData,
+                            headers: formData.getHeaders()
                         });
                         
                         const ocrData = await resOcr.json();
@@ -383,6 +386,7 @@ const parseResume = async (filePath, originalName) => {
                         }
                     } catch (ocrErr) {
                         console.error('[OCR] Fallback failed:', ocrErr.message);
+                        // Continue with whatever text was extracted
                     }
                 }
             } catch (pdfErr) {
