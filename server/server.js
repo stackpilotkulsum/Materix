@@ -882,6 +882,8 @@ app.post('/api/upload', authenticateToken, (req, res) => {
 
         // Process each file and build metadata
         let uploadedFilesResp = [];
+        let failedFiles = [];
+        
         for (const [index, f] of processedFiles.entries()) {
             const safeOriginalName = path.basename(f.originalname);
             const relPath = pathsArr[index] || '';
@@ -891,57 +893,83 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                 f.folder_name = folderName;
             }
 
-            const extractedData = await parseResume(f.path, safeOriginalName);
-
-            // Upload to Supabase Storage
-            const fileBuffer = fs.readFileSync(f.path);
-            const bucketPath = `${req.user.username}/${f.filename}`;
-            
-            const { error: uploadError } = await supabaseAdmin.storage.from('materials').upload(bucketPath, fileBuffer, {
-                contentType: f.mimetype || 'application/octet-stream'
-            });
-            
-            if (uploadError) {
-                console.error("Storage upload error:", uploadError);
-                continue; // Skip db insert if storage fails
-            }
-
-            const { data: publicUrlData } = supabaseAdmin.storage.from('materials').getPublicUrl(bucketPath);
-            const publicUrl = publicUrlData.publicUrl;
-
-            console.log(`[UPLOAD] Inserting into DB: ${safeOriginalName}`);
-            // Insert into Supabase DB
-            const { error: insertError } = await supabaseAdmin.from('materials').insert([{
-                username: req.user.username,
-                email: email,
-                original_name: safeOriginalName,
-                file_url: publicUrl,
-                file_size: f.size,
-                folder: folderName,
-                file_count: processedFiles.length,
-                extracted_bio: extractedData.bio
-            }]);
-
-            if (insertError) {
-                console.error("[UPLOAD] DB Insert Error:", insertError);
-            }
-
-            uploadedFilesResp.push({
-                name: safeOriginalName,
-                size: f.size,
-                path: publicUrl
-            });
-
-            // Delete local file to save space!
             try {
-                if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
-            } catch (e) {}
+                const extractedData = await parseResume(f.path, safeOriginalName);
+
+                // Upload to Supabase Storage
+                const fileBuffer = fs.readFileSync(f.path);
+                const bucketPath = `${req.user.username}/${f.filename}`;
+                
+                const { error: uploadError } = await supabaseAdmin.storage.from('materials').upload(bucketPath, fileBuffer, {
+                    contentType: f.mimetype || 'application/octet-stream'
+                });
+                
+                if (uploadError) {
+                    console.error(`[UPLOAD] Storage error for ${safeOriginalName}:`, uploadError);
+                    failedFiles.push(safeOriginalName);
+                    continue; // Skip db insert if storage fails
+                }
+
+                const { data: publicUrlData } = supabaseAdmin.storage.from('materials').getPublicUrl(bucketPath);
+                const publicUrl = publicUrlData.publicUrl;
+
+                console.log(`[UPLOAD] Inserting into DB: ${safeOriginalName}`);
+                // Insert into Supabase DB
+                const { error: insertError } = await supabaseAdmin.from('materials').insert([{
+                    username: req.user.username,
+                    email: email,
+                    original_name: safeOriginalName,
+                    file_url: publicUrl,
+                    file_size: f.size,
+                    folder: folderName,
+                    file_count: processedFiles.length,
+                    extracted_bio: extractedData.bio
+                }]);
+
+                if (insertError) {
+                    console.error(`[UPLOAD] DB Insert Error for ${safeOriginalName}:`, insertError);
+                    failedFiles.push(safeOriginalName);
+                    continue; // Skip adding to response if db insert fails
+                }
+
+                uploadedFilesResp.push({
+                    name: safeOriginalName,
+                    size: f.size,
+                    path: publicUrl
+                });
+            } catch (error) {
+                console.error(`[UPLOAD] Unexpected error processing ${safeOriginalName}:`, error);
+                failedFiles.push(safeOriginalName);
+            } finally {
+                // Delete local file to save space!
+                try {
+                    if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
+                } catch (e) {}
+            }
         }
 
-        console.log(`Received ${processedFiles.length} files securely`);
-        return res.status(200).json({
-            message: `${processedFiles.length} file(s) uploaded securely!`,
-            files: uploadedFilesResp
+        const successCount = uploadedFilesResp.length;
+        const failedCount = failedFiles.length;
+        
+        console.log(`Upload complete: ${successCount} succeeded, ${failedCount} failed`);
+        
+        if (successCount === 0 && failedCount > 0) {
+            return res.status(400).json({
+                message: `Failed to upload files: ${failedFiles.join(', ')}`,
+                files: [],
+                failed: failedFiles
+            });
+        }
+        
+        let message = `${successCount} file(s) uploaded successfully!`;
+        if (failedCount > 0) {
+            message += ` Failed: ${failedFiles.join(', ')}`;
+        }
+        
+        return res.status(successCount > 0 ? 200 : 400).json({
+            message,
+            files: uploadedFilesResp,
+            failed: failedFiles.length > 0 ? failedFiles : undefined
         });
     });
 });

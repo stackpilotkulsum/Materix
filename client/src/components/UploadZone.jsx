@@ -91,7 +91,15 @@ const UploadZone = ({ onUploadSuccess }) => {
         }
       });
 
-      addToast(response.data.message || 'Files uploaded successfully!', 'success');
+      const { message, failed } = response.data;
+      
+      // Show appropriate message based on success/failure
+      if (failed && failed.length > 0) {
+        addToast(`${message}`, 'error');
+      } else {
+        addToast(message || 'Files uploaded successfully!', 'success');
+      }
+      
       setFiles([]);
       if (onUploadSuccess) onUploadSuccess();
     } catch (error) {
