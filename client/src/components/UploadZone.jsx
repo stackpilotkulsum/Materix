@@ -91,12 +91,21 @@ const UploadZone = ({ onUploadSuccess }) => {
         }
       });
 
-      addToast(response.data.message || 'Files uploaded successfully!', 'success');
+      const { message, details } = response.data;
+      
+      if (details) {
+        // There were errors - show detailed message
+        addToast(`${message}: ${details}`, 'error');
+      } else {
+        // Success
+        addToast(message || 'Files uploaded successfully!', 'success');
+      }
+      
       setFiles([]);
       if (onUploadSuccess) onUploadSuccess();
     } catch (error) {
       console.error('Upload error:', error);
-      const errorMsg = error.response?.data?.message || 'Failed to upload files. Please try again.';
+      const errorMsg = error.response?.data?.details || error.response?.data?.message || 'Failed to upload files. Please try again.';
       addToast(errorMsg, 'error');
       setFiles(prev => prev.map(f => ({ ...f, progress: 0 })));
     } finally {

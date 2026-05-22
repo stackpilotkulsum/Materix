@@ -883,6 +883,7 @@ app.post('/api/upload', authenticateToken, (req, res) => {
         // Process each file and build metadata
         let uploadedFilesResp = [];
         let failedFiles = [];
+        let errors = {}; // Track detailed errors
         
         for (const [index, f] of processedFiles.entries()) {
             const safeOriginalName = path.basename(f.originalname);
@@ -894,12 +895,14 @@ app.post('/api/upload', authenticateToken, (req, res) => {
             }
 
             try {
+                console.log(`[UPLOAD] Processing file: ${safeOriginalName}`);
                 const extractedData = await parseResume(f.path, safeOriginalName);
 
                 // Upload to Supabase Storage
                 const fileBuffer = fs.readFileSync(f.path);
                 const bucketPath = `${req.user.username}/${f.filename}`;
                 
+                console.log(`[UPLOAD] Uploading to storage: ${bucketPath}`);
                 const { error: uploadError } = await supabaseAdmin.storage.from('materials').upload(bucketPath, fileBuffer, {
                     contentType: f.mimetype || 'application/octet-stream'
                 });
@@ -907,6 +910,7 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                 if (uploadError) {
                     console.error(`[UPLOAD] Storage error for ${safeOriginalName}:`, uploadError);
                     failedFiles.push(safeOriginalName);
+                    errors[safeOriginalName] = `Storage upload failed: ${uploadError.message}`;
                     continue;
                 }
 
@@ -929,7 +933,9 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                 if (insertError) {
                     console.error(`[UPLOAD] DB Insert Error for ${safeOriginalName}:`, insertError);
                     failedFiles.push(safeOriginalName);
+                    errors[safeOriginalName] = `Database error: ${insertError.message}`;
                 } else {
+                    console.log(`[UPLOAD] Success: ${safeOriginalName}`);
                     uploadedFilesResp.push({
                         name: safeOriginalName,
                         size: f.size,
@@ -939,6 +945,7 @@ app.post('/api/upload', authenticateToken, (req, res) => {
             } catch (error) {
                 console.error(`[UPLOAD] Error processing ${safeOriginalName}:`, error.message);
                 failedFiles.push(safeOriginalName);
+                errors[safeOriginalName] = error.message;
             } finally {
                 // Delete local file to save space
                 if (fs.existsSync(f.path)) {
@@ -954,11 +961,16 @@ app.post('/api/upload', authenticateToken, (req, res) => {
         const successCount = uploadedFilesResp.length;
         const failedCount = failedFiles.length;
         
-        console.log(`Upload complete: ${successCount} succeeded, ${failedCount} failed`);
+        console.log(`[UPLOAD] Upload complete: ${successCount} succeeded, ${failedCount} failed`);
+        if (failedCount > 0) {
+            console.log(`[UPLOAD] Failed files and errors:`, errors);
+        }
         
         if (successCount === 0 && failedCount > 0) {
+            const errorDetails = Object.entries(errors).map(([file, err]) => `${file}: ${err}`).join(' | ');
             return res.status(400).json({
-                message: `Failed to upload files: ${failedFiles.join(', ')}`,
+                message: `Failed to upload ${failedFiles.length} file(s)`,
+                details: errorDetails,
                 files: []
             });
         }
