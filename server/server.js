@@ -16,8 +16,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = 'your-secret-key-change-this-in-production';
 const JWT_EXPIRES_IN = '24h';
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://gemjqvhxdnwienhjlvit.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlbWpxdmh4ZG53aWVuaGpsdml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTg0MjUsImV4cCI6MjA5Mzc5NDQyNX0.pEAjfmHFZrAQ8CxIRhva3b2tj63Vz1bk4H2303hD264';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uhtdwatcfiqzrzcpzmf.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVodGR3YXRjdGZpcXpyemNwem1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzUxOTMsImV4cCI6MjA5NTAxMTE5M30.Z-I3avq19VwWpxgqnmVYaEojoJ8dSnFFAgqZs6OH-YE';
 
 // Initialize Google OAuth Client - get CLIENT_ID from environment
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '355356179432-ceotra0qt2ns8sur8lp1a6or9lgheslm.apps.googleusercontent.com';
