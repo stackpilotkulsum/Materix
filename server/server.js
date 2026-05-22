@@ -907,7 +907,7 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                 if (uploadError) {
                     console.error(`[UPLOAD] Storage error for ${safeOriginalName}:`, uploadError);
                     failedFiles.push(safeOriginalName);
-                    continue; // Skip db insert if storage fails
+                    continue;
                 }
 
                 const { data: publicUrlData } = supabaseAdmin.storage.from('materials').getPublicUrl(bucketPath);
@@ -929,22 +929,25 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                 if (insertError) {
                     console.error(`[UPLOAD] DB Insert Error for ${safeOriginalName}:`, insertError);
                     failedFiles.push(safeOriginalName);
-                    continue; // Skip adding to response if db insert fails
+                } else {
+                    uploadedFilesResp.push({
+                        name: safeOriginalName,
+                        size: f.size,
+                        path: publicUrl
+                    });
                 }
-
-                uploadedFilesResp.push({
-                    name: safeOriginalName,
-                    size: f.size,
-                    path: publicUrl
-                });
             } catch (error) {
-                console.error(`[UPLOAD] Unexpected error processing ${safeOriginalName}:`, error);
+                console.error(`[UPLOAD] Error processing ${safeOriginalName}:`, error.message);
                 failedFiles.push(safeOriginalName);
             } finally {
-                // Delete local file to save space!
-                try {
-                    if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
-                } catch (e) {}
+                // Delete local file to save space
+                if (fs.existsSync(f.path)) {
+                    try {
+                        fs.unlinkSync(f.path);
+                    } catch (e) {
+                        console.error(`[UPLOAD] Failed to delete local file ${f.path}:`, e.message);
+                    }
+                }
             }
         }
 
@@ -956,20 +959,18 @@ app.post('/api/upload', authenticateToken, (req, res) => {
         if (successCount === 0 && failedCount > 0) {
             return res.status(400).json({
                 message: `Failed to upload files: ${failedFiles.join(', ')}`,
-                files: [],
-                failed: failedFiles
+                files: []
             });
         }
         
         let message = `${successCount} file(s) uploaded successfully!`;
         if (failedCount > 0) {
-            message += ` Failed: ${failedFiles.join(', ')}`;
+            message += ` (${failedCount} failed)`;
         }
         
-        return res.status(successCount > 0 ? 200 : 400).json({
+        return res.status(200).json({
             message,
-            files: uploadedFilesResp,
-            failed: failedFiles.length > 0 ? failedFiles : undefined
+            files: uploadedFilesResp
         });
     });
 });
