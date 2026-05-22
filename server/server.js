@@ -95,7 +95,7 @@ app.use('/api/upload', (req, res, next) => {
 app.use(cors({
     origin: [
         process.env.FRONTEND_URL || 'http://localhost:5173',
-        'https://material-mate.vercel.app'
+        'https://materix.vercel.app'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
