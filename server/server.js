@@ -16,8 +16,39 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = 'your-secret-key-change-this-in-production';
 const JWT_EXPIRES_IN = '24h';
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uhtdwatcfiqzrzcpzmf.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVodGR3YXRjdGZpcXpyemNwem1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzUxOTMsImV4cCI6MjA5NTAxMTE5M30.Z-I3avq19VwWpxgqnmVYaEojoJ8dSnFFAgqZs6OH-YE';
+
+const getSupabaseRefFromKey = (key) => {
+    try {
+        const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString('utf8'));
+        return payload.ref || null;
+    } catch (error) {
+        console.error('Unable to read Supabase anon key project ref:', error.message);
+        return null;
+    }
+};
+
+const normalizeSupabaseUrl = (url, key) => {
+    const keyRef = getSupabaseRefFromKey(key);
+    const configuredUrl = (url || '').replace(/\/+$/, '');
+
+    if (!keyRef) {
+        return configuredUrl || 'https://uhtdwatctfiqzrzcpzmf.supabase.co';
+    }
+
+    const keyUrl = `https://${keyRef}.supabase.co`;
+    if (!configuredUrl || !configuredUrl.includes(keyRef)) {
+        console.warn(`Supabase URL/key mismatch. Using anon key project URL: ${keyUrl}`);
+        return keyUrl;
+    }
+
+    return configuredUrl;
+};
+
+const SUPABASE_URL = normalizeSupabaseUrl(
+    process.env.SUPABASE_URL || 'https://uhtdwatctfiqzrzcpzmf.supabase.co',
+    SUPABASE_ANON_KEY
+);
 
 // Initialize Google OAuth Client - get CLIENT_ID from environment
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '355356179432-ceotra0qt2ns8sur8lp1a6or9lgheslm.apps.googleusercontent.com';
