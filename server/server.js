@@ -352,46 +352,17 @@ const parseResume = async (filePath, originalName) => {
         let text = '';
 
         if (ext === '.pdf') {
-            const dataBuffer = fs.readFileSync(filePath);
             try {
+                const dataBuffer = fs.readFileSync(filePath);
                 const data = await pdfParse(dataBuffer);
                 text = data.text || '';
-                
-                // OCR FALLBACK: If pdf-parse found almost no text, it's likely a scanned/image PDF
-                if (text.trim().length < 50) {
-                    console.log(`[OCR] Very little text found in ${originalName}, attempting OCR fallback...`);
-                    try {
-                        // Use Node.js FormData from form-data package (if available)
-                        // For now, fall back gracefully if OCR fails
-                        const FormData = require('form-data');
-                        const formData = new FormData();
-                        formData.append('apikey', process.env.OCR_API_KEY || 'helloworld');
-                        formData.append('file', dataBuffer, originalName);
-                        formData.append('filetype', 'pdf');
-                        formData.append('isOverlayRequired', 'false');
-                        formData.append('OCREngine', '1'); 
-                        
-                        const resOcr = await fetch('https://api.ocr.space/parse/image', { 
-                            method: 'POST', 
-                            body: formData,
-                            headers: formData.getHeaders()
-                        });
-                        
-                        const ocrData = await resOcr.json();
-                        if (ocrData && ocrData.ParsedResults && ocrData.ParsedResults.length > 0) {
-                            text = ocrData.ParsedResults.map(p => p.ParsedText).join('\n');
-                            console.log(`[OCR] Successfully extracted ${text.length} characters.`);
-                        } else if (ocrData && (ocrData.IsErroredOnProcessing || ocrData.ErrorMessage)) {
-                            console.error('[OCR] API Error:', ocrData.ErrorMessage || 'Unknown error');
-                        }
-                    } catch (ocrErr) {
-                        console.error('[OCR] Fallback failed:', ocrErr.message);
-                        // Continue with whatever text was extracted
-                    }
-                }
             } catch (pdfErr) {
                 console.error('pdf-parse error:', pdfErr.message);
-                return { email: 'Not found', phone: 'Not found', bio: 'Could not parse PDF: ' + pdfErr.message };
+                return { 
+                    email: 'Not found', 
+                    phone: 'Not found', 
+                    bio: 'Could not parse PDF file'
+                };
             }
         } else if (ext === '.docx') {
             text = readDocxText(filePath);
@@ -403,7 +374,7 @@ const parseResume = async (filePath, originalName) => {
 
         text = normalizeText(text);
         if (!text) {
-            return { email: 'Not found', phone: 'Not found', bio: 'Could not parse file: no readable resume text found.' };
+            return { email: 'Not found', phone: 'Not found', bio: 'Could not parse file: no readable text found.' };
         }
 
         const lines = text
