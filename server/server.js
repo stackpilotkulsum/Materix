@@ -750,13 +750,14 @@ app.post('/api/auth/google-register', async (req, res) => {
 // API Route for uploading materials
 app.post('/api/upload', authenticateToken, (req, res) => {
     upload.array('materials')(req, res, async (err) => {
-        if (err) {
-            console.error('Multer/Upload Error:', err.message);
-            if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({ message: 'File too large. Max limit is 10MB.' });
+        try {
+            if (err) {
+                console.error('Multer/Upload Error:', err.message);
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(400).json({ message: 'File too large. Max limit is 10MB.' });
+                }
+                return res.status(400).json({ message: err.message });
             }
-            return res.status(400).json({ message: err.message });
-        }
 
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'No files received.' });
@@ -984,6 +985,13 @@ app.post('/api/upload', authenticateToken, (req, res) => {
             message,
             files: uploadedFilesResp
         });
+        } catch (error) {
+            console.error('[UPLOAD] Unhandled endpoint error:', error);
+            return res.status(400).json({
+                message: 'Upload failed',
+                details: error.message
+            });
+        }
     });
 });
 
