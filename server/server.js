@@ -193,6 +193,59 @@ const saveMetadata = (username, metadata) => {
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 };
 
+const sanitizeUsername = (value, fallback = 'user') => {
+    const cleaned = String(value || '')
+        .split('@')[0]
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+        .slice(0, 40);
+
+    return cleaned || fallback;
+};
+
+const usernameFromSupabaseUser = (user) => {
+    const base = sanitizeUsername(user.email || user.id);
+    const suffix = String(user.id || crypto.randomUUID()).replace(/-/g, '').slice(0, 8);
+    return `${base}_${suffix}`;
+};
+
+const findProfileByEmail = async (email) => {
+    const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Profile lookup by email failed:', error.message);
+        return null;
+    }
+
+    return data;
+};
+
+const createProfileForAuthUser = async ({ username, email, name, authMethod }) => {
+    const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .insert([{
+            username,
+            email,
+            name,
+            auth_method: authMethod
+        }])
+        .select('*')
+        .maybeSingle();
+
+    if (!error) return data;
+
+    console.error('Profile creation failed:', error.message);
+
+    if (error.code === '23505') {
+        return findProfileByEmail(email);
+    }
+
+    return null;
+};
+
 // Helper to parse material text
 const parseResume = async (filePath, originalName) => {
     const ext = path.extname(originalName).toLowerCase();
@@ -536,18 +589,13 @@ app.post('/api/auth/supabase-login', async (req, res) => {
             return res.status(400).json({ message: 'Supabase access token is required' });
         }
 
-        const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'apikey': SUPABASE_ANON_KEY
-            }
-        });
-
-        if (!userResponse.ok) {
+        const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+        if (authError || !authData?.user) {
+            console.error('Supabase token verification failed:', authError?.message || 'No user returned');
             return res.status(401).json({ message: 'Invalid Supabase session' });
         }
 
-        const supabaseUser = await userResponse.json();
+        const supabaseUser = authData.user;
         const email = supabaseUser.email;
         const supabaseId = supabaseUser.id;
         const name = supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || email;
@@ -556,26 +604,29 @@ app.post('/api/auth/supabase-login', async (req, res) => {
             return res.status(400).json({ message: 'Supabase user profile is incomplete' });
         }
 
-        const { data: existingUser } = await supabaseAdmin.from('profiles').select('*').eq('email', email).maybeSingle();
-        let username;
+        let profile = await findProfileByEmail(email);
+        let username = profile?.username;
 
-        if (existingUser) {
-            username = existingUser.username;
-        } else {
-            username = email.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '') || 'user';
-            await supabaseAdmin.from('profiles').insert([{
+        if (!username) {
+            username = usernameFromSupabaseUser(supabaseUser);
+            profile = await createProfileForAuthUser({
                 username,
                 email,
                 name,
-                auth_method: 'supabase'
-            }]);
+                authMethod: 'supabase'
+            });
+            username = profile?.username || username;
         }
 
-        const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+        const token = jwt.sign(
+            { username, email, supabaseId, auth_method: 'supabase' },
+            JWT_SECRET,
+            { expiresIn: JWT_EXPIRES_IN }
+        );
         res.json({ token, username });
     } catch (error) {
         console.error('Supabase login error:', error);
-        res.status(500).json({ message: 'Supabase authentication failed: ' + error.message });
+        res.status(500).json({ message: 'Supabase authentication failed. Check backend logs for details.' });
     }
 });
 
@@ -796,7 +847,7 @@ app.post('/api/upload', authenticateToken, (req, res) => {
 
         // Get user email
         const { data: userProfile } = await supabaseAdmin.from('profiles').select('email').eq('username', req.user.username).maybeSingle();
-        const email = userProfile ? userProfile.email : '';
+        const email = userProfile?.email || req.user.email || '';
 
         // Process each file and build metadata
         let uploadedFilesResp = [];

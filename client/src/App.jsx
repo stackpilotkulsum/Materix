@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import Header from './components/Header';
 import UploadZone from './components/UploadZone';
 import FileHistory from './components/FileHistory';
@@ -33,6 +33,7 @@ function App() {
   const [refreshHistory, setRefreshHistory] = useState(0);
   const [currentTab, setCurrentTab] = useState('upload');
   const [sessionNotice, setSessionNotice] = useState('');
+  const lastSupabaseExchangeRef = useRef(null);
 
   const clearSession = useCallback(async ({ expired = false } = {}) => {
     localStorage.removeItem('material_token');
@@ -63,6 +64,12 @@ function App() {
     // Listen for Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
+        if (lastSupabaseExchangeRef.current === session.access_token) {
+          return;
+        }
+
+        lastSupabaseExchangeRef.current = session.access_token;
+
         try {
           const response = await api.post('/api/auth/supabase-login', {
             accessToken: session.access_token
@@ -76,11 +83,13 @@ function App() {
           setSessionNotice(`Login blocked by server: ${errorMsg}`);
           localStorage.removeItem('material_token');
           setToken(null);
+          lastSupabaseExchangeRef.current = null;
           await supabase.auth.signOut();
         }
       } else if (event === 'SIGNED_OUT') {
         localStorage.removeItem('material_token');
         setToken(null);
+        lastSupabaseExchangeRef.current = null;
       }
     });
 
