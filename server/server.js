@@ -8,6 +8,7 @@ const pdfParse = require('pdf-parse');
 const AdmZip = require('adm-zip');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const Tesseract = require('tesseract.js');
 const { OAuth2Client } = require('google-auth-library');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
@@ -302,36 +303,6 @@ const parseResume = async (filePath, originalName) => {
     const ext = path.extname(originalName).toLowerCase();
 
     const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp'];
-    if (imageExts.includes(ext)) {
-        const extName = ext.replace('.', '').toUpperCase();
-        const extractedData = {
-            name: originalName.replace(/\.[^/.]+$/, ''),
-            email: 'N/A',
-            emails: [],
-            phone: 'N/A',
-            phones: [],
-            links: [],
-            linkedin: 'Not found',
-            github: 'Not found',
-            portfolioLink: 'Not found',
-            projectLinks: [],
-            bio: `${extName} image file securely stored in Materix. Full thumbnail and details are available in the archives.`,
-            skills: 'No specific skills section found.',
-            experience: 'No experience section found.',
-            education: 'No education section found.',
-            projects: 'No projects section found.',
-            certifications: 'No certifications section found.',
-            achievements: 'No achievements section found.',
-            languages: 'No languages section found.',
-            extracurricular: 'No extra curricular activities section found.',
-            interests: 'No interests section found.',
-            rawTextPreview: 'Image file uploaded.'
-        };
-        return {
-            ...extractedData,
-            bio: JSON.stringify(extractedData)
-        };
-    }
 
     const normalizeText = (value) => value
         .replace(/\r/g, '\n')
@@ -388,12 +359,50 @@ const parseResume = async (filePath, originalName) => {
             text = readDocxText(filePath);
         } else if (ext === '.txt') {
             text = fs.readFileSync(filePath, 'utf8');
+        } else if (imageExts.includes(ext)) {
+            try {
+                console.log(`[OCR] Running Tesseract on image: ${originalName}`);
+                const { data: { text: extractedText } } = await Tesseract.recognize(filePath, 'eng');
+                text = extractedText || '';
+            } catch (ocrErr) {
+                console.error('Tesseract error:', ocrErr.message);
+            }
         } else {
             return { email: 'Not found', phone: 'Not found', bio: 'Not supported' };
         }
 
         text = normalizeText(text);
         if (!text) {
+            if (imageExts.includes(ext)) {
+                const extName = ext.replace('.', '').toUpperCase();
+                const extractedData = {
+                    name: originalName.replace(/\.[^/.]+$/, ''),
+                    email: 'N/A',
+                    emails: [],
+                    phone: 'N/A',
+                    phones: [],
+                    links: [],
+                    linkedin: 'Not found',
+                    github: 'Not found',
+                    portfolioLink: 'Not found',
+                    projectLinks: [],
+                    bio: `${extName} image file securely stored in Materix. Full thumbnail and details are available in the archives.`,
+                    skills: 'No specific skills section found.',
+                    experience: 'No experience section found.',
+                    education: 'No education section found.',
+                    projects: 'No projects section found.',
+                    certifications: 'No certifications section found.',
+                    achievements: 'No achievements section found.',
+                    languages: 'No languages section found.',
+                    extracurricular: 'No extra curricular activities section found.',
+                    interests: 'No interests section found.',
+                    rawTextPreview: 'Image file uploaded.'
+                };
+                return {
+                    ...extractedData,
+                    bio: JSON.stringify(extractedData)
+                };
+            }
             return { email: 'Not found', phone: 'Not found', bio: 'Could not parse file: no readable text found.' };
         }
 
