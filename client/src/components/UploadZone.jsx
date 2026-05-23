@@ -82,7 +82,6 @@ const UploadZone = ({ onUploadSuccess }) => {
       
       const response = await api.post('/api/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
         },
         onUploadProgress: (progressEvent) => {
