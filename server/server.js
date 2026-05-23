@@ -63,7 +63,7 @@ const supabaseAdmin = SUPABASE_SERVICE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     : supabase; // fallback to anon if service key not set
 
-// Auto-verify database tables exist on startup
+// Auto-verify database tables and storage buckets exist on startup
 async function setupDatabase() {
     try {
         console.log('Verifying database tables...');
@@ -84,7 +84,27 @@ async function setupDatabase() {
             console.log('materials table OK');
         }
 
-        console.log('Database verification complete!');
+        // Verify/Create materials storage bucket
+        console.log('Verifying storage buckets...');
+        const { data: buckets, error: bucketsErr } = await supabaseAdmin.storage.listBuckets();
+        if (bucketsErr) {
+            console.error('Storage bucket verification error:', bucketsErr.message);
+        } else {
+            const hasMaterials = buckets.some(b => b.name === 'materials');
+            if (!hasMaterials) {
+                console.log('Creating "materials" storage bucket...');
+                const { error: createErr } = await supabaseAdmin.storage.createBucket('materials', { public: true });
+                if (createErr) {
+                    console.error('Failed to auto-create "materials" storage bucket:', createErr.message);
+                } else {
+                    console.log('"materials" storage bucket auto-created successfully!');
+                }
+            } else {
+                console.log('"materials" storage bucket OK');
+            }
+        }
+
+        console.log('Database and storage verification complete!');
     } catch (err) {
         console.error('Database setup error:', err.message);
     }
@@ -873,6 +893,14 @@ app.post('/api/upload', authenticateToken, (req, res) => {
             try {
                 console.log(`[UPLOAD] Processing file: ${safeOriginalName}`);
                 const extractedData = await parseResume(f.path, safeOriginalName);
+                
+                // Ensure bio doesn't exceed database limits (truncate to 8000 chars)
+                let bioData = extractedData.bio || '';
+                if (bioData.length > 8000) {
+                    console.log(`[UPLOAD] Truncating bio from ${bioData.length} to 8000 chars for ${safeOriginalName}`);
+                    bioData = bioData.substring(0, 8000);
+                }
+                console.log(`[UPLOAD] Extracted data - Name: ${extractedData.name}, Bio size: ${bioData.length} chars`);
 
                 // Upload to Supabase Storage
                 const fileBuffer = fs.readFileSync(f.path);
@@ -903,7 +931,7 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                     file_size: f.size,
                     folder: folderName,
                     file_count: processedFiles.length,
-                    extracted_bio: extractedData.bio
+                    extracted_bio: bioData
                 }]);
 
                 if (insertError) {
