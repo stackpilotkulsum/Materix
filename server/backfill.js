@@ -35,28 +35,55 @@ async function backfill() {
             continue;
         }
         
+        let data = {};
+        let parseFailed = false;
+
         try {
-            const data = JSON.parse(bio);
-            
-            // Map the parsed JSON fields to the database columns
+            data = JSON.parse(bio);
+        } catch (parseErr) {
+            parseFailed = true;
+            console.log(`[WARN] Standard JSON parsing failed for Record ID ${record.id} (${record.original_name}), attempting regex recovery...`);
+        }
+
+        // Regex extractor helper for truncated/invalid JSON strings
+        const extractField = (key, fallbackValue) => {
+            if (!parseFailed && data[key] !== undefined) {
+                return data[key];
+            }
+            // Match "key": "value" allowing escaped quotes inside value
+            const regex = new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
+            const match = bio.match(regex);
+            if (match) {
+                try {
+                    // Try parsing just this value to unescape standard JSON characters
+                    return JSON.parse(`"${match[1]}"`);
+                } catch (e) {
+                    return match[1];
+                }
+            }
+            return fallbackValue;
+        };
+
+        try {
+            // Map fields with fallback to regex extraction if JSON parsing failed
             const updatePayload = {
-                candidate_name: data.name || 'Not found',
-                candidate_email: data.email || 'Not found',
-                candidate_phone: data.phone || 'Not found',
-                linkedin: data.linkedin || 'Not found',
-                github: data.github || 'Not found',
-                portfolio_link: data.portfolioLink || 'Not found',
-                summary: data.bio || 'No summary found.',
-                skills: data.skills || 'No skills section found.',
-                experience: data.experience || 'No experience section found.',
-                education: data.education || 'No education section found.',
-                projects: data.projects || 'No projects section found.',
-                certifications: data.certifications || 'No certifications section found.',
-                achievements: data.achievements || 'No achievements section found.',
-                languages: data.languages || 'No languages section found.',
-                extracurricular: data.extracurricular || 'No extra curricular activities section found.',
-                interests: data.interests || 'No interests section found.',
-                raw_text_preview: data.rawTextPreview || ''
+                candidate_name: extractField('name', 'Not found'),
+                candidate_email: extractField('email', 'Not found'),
+                candidate_phone: extractField('phone', 'Not found'),
+                linkedin: extractField('linkedin', 'Not found'),
+                github: extractField('github', 'Not found'),
+                portfolio_link: extractField('portfolioLink', 'Not found'),
+                summary: extractField('bio', 'No summary found.'),
+                skills: extractField('skills', 'No skills section found.'),
+                experience: extractField('experience', 'No experience section found.'),
+                education: extractField('education', 'No education section found.'),
+                projects: extractField('projects', 'No projects section found.'),
+                certifications: extractField('certifications', 'No certifications section found.'),
+                achievements: extractField('achievements', 'No achievements section found.'),
+                languages: extractField('languages', 'No languages section found.'),
+                extracurricular: extractField('extracurricular', 'No extra curricular activities section found.'),
+                interests: extractField('interests', 'No interests section found.'),
+                raw_text_preview: extractField('rawTextPreview', '')
             };
             
             console.log(`[UPDATING] Record ID: ${record.id} (${record.original_name}) with extracted fields...`);
@@ -72,8 +99,8 @@ async function backfill() {
                 console.log(`[SUCCESS] Record ID ${record.id} updated successfully.`);
                 successCount++;
             }
-        } catch (parseErr) {
-            console.error(`[ERROR] Parsing failed for Record ID ${record.id}:`, parseErr.message);
+        } catch (execErr) {
+            console.error(`[ERROR] Execution failed for Record ID ${record.id}:`, execErr.message);
             errorCount++;
         }
     }

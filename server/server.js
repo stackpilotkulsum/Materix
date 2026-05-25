@@ -932,11 +932,12 @@ app.post('/api/upload', authenticateToken, (req, res) => {
 
                 console.log(`[UPLOAD] Inserting into DB: ${safeOriginalName}`);
                 
-                let parsed = {};
+                let summaryText = 'No summary found.';
                 try {
-                    parsed = JSON.parse(bioData);
+                    const parsed = JSON.parse(bioData);
+                    summaryText = parsed.bio || 'No summary found.';
                 } catch (jsonErr) {
-                    console.log(`[UPLOAD] Not a JSON bio or failed to parse:`, jsonErr.message);
+                    console.log(`[UPLOAD] Not a JSON bio or failed to parse for summary:`, jsonErr.message);
                 }
 
                 // Insert into Supabase DB
@@ -949,23 +950,23 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                     folder: folderName,
                     file_count: processedFiles.length,
                     extracted_bio: bioData,
-                    candidate_name: parsed.name || extractedData.name || 'Not found',
-                    candidate_email: parsed.email || extractedData.email || 'Not found',
-                    candidate_phone: parsed.phone || extractedData.phone || 'Not found',
-                    linkedin: parsed.linkedin || extractedData.linkedin || 'Not found',
-                    github: parsed.github || extractedData.github || 'Not found',
-                    portfolio_link: parsed.portfolioLink || extractedData.portfolioLink || 'Not found',
-                    summary: parsed.bio || 'No summary found.',
-                    skills: parsed.skills || 'No skills section found.',
-                    experience: parsed.experience || 'No experience section found.',
-                    education: parsed.education || 'No education section found.',
-                    projects: parsed.projects || 'No projects section found.',
-                    certifications: parsed.certifications || 'No certifications section found.',
-                    achievements: parsed.achievements || 'No achievements section found.',
-                    languages: parsed.languages || 'No languages section found.',
-                    extracurricular: parsed.extracurricular || 'No extra curricular activities section found.',
-                    interests: parsed.interests || 'No interests section found.',
-                    raw_text_preview: parsed.rawTextPreview || ''
+                    candidate_name: extractedData.name || 'Not found',
+                    candidate_email: extractedData.email || 'Not found',
+                    candidate_phone: extractedData.phone || 'Not found',
+                    linkedin: extractedData.linkedin || 'Not found',
+                    github: extractedData.github || 'Not found',
+                    portfolio_link: extractedData.portfolioLink || 'Not found',
+                    summary: summaryText,
+                    skills: extractedData.skills || 'No skills section found.',
+                    experience: extractedData.experience || 'No experience section found.',
+                    education: extractedData.education || 'No education section found.',
+                    projects: extractedData.projects || 'No projects section found.',
+                    certifications: extractedData.certifications || 'No certifications section found.',
+                    achievements: extractedData.achievements || 'No achievements section found.',
+                    languages: extractedData.languages || 'No languages section found.',
+                    extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
+                    interests: extractedData.interests || 'No interests section found.',
+                    raw_text_preview: extractedData.rawTextPreview || ''
                 }]);
 
                 if (insertError) {
@@ -1100,36 +1101,36 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                 fs.writeFileSync(tempPath, Buffer.from(arrayBuffer));
 
                  const extractedData = await parseResume(tempPath, file.original_name);
-                 
                  const bioData = extractedData.bio || '';
-                 let parsed = {};
+                 let summaryText = 'No summary found.';
                  try {
-                     parsed = JSON.parse(bioData);
+                     const parsed = JSON.parse(bioData);
+                     summaryText = parsed.bio || 'No summary found.';
                  } catch (jsonErr) {
-                     console.log(`[REPROCESS] Not a JSON bio or failed to parse:`, jsonErr.message);
+                     console.log(`[REPROCESS] Not a JSON bio or failed to parse for summary:`, jsonErr.message);
                  }
 
                  const { error: updateError } = await supabaseAdmin
                      .from('materials')
                      .update({ 
                          extracted_bio: bioData,
-                         candidate_name: parsed.name || extractedData.name || 'Not found',
-                         candidate_email: parsed.email || extractedData.email || 'Not found',
-                         candidate_phone: parsed.phone || extractedData.phone || 'Not found',
-                         linkedin: parsed.linkedin || extractedData.linkedin || 'Not found',
-                         github: parsed.github || extractedData.github || 'Not found',
-                         portfolio_link: parsed.portfolioLink || extractedData.portfolioLink || 'Not found',
-                         summary: parsed.bio || 'No summary found.',
-                         skills: parsed.skills || 'No skills section found.',
-                         experience: parsed.experience || 'No experience section found.',
-                         education: parsed.education || 'No education section found.',
-                         projects: parsed.projects || 'No projects section found.',
-                         certifications: parsed.certifications || 'No certifications section found.',
-                         achievements: parsed.achievements || 'No achievements section found.',
-                         languages: parsed.languages || 'No languages section found.',
-                         extracurricular: parsed.extracurricular || 'No extra curricular activities section found.',
-                         interests: parsed.interests || 'No interests section found.',
-                         raw_text_preview: parsed.rawTextPreview || ''
+                         candidate_name: extractedData.name || 'Not found',
+                         candidate_email: extractedData.email || 'Not found',
+                         candidate_phone: extractedData.phone || 'Not found',
+                         linkedin: extractedData.linkedin || 'Not found',
+                         github: extractedData.github || 'Not found',
+                         portfolio_link: extractedData.portfolioLink || 'Not found',
+                         summary: summaryText,
+                         skills: extractedData.skills || 'No skills section found.',
+                         experience: extractedData.experience || 'No experience section found.',
+                         education: extractedData.education || 'No education section found.',
+                         projects: extractedData.projects || 'No projects section found.',
+                         certifications: extractedData.certifications || 'No certifications section found.',
+                         achievements: extractedData.achievements || 'No achievements section found.',
+                         languages: extractedData.languages || 'No languages section found.',
+                         extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
+                         interests: extractedData.interests || 'No interests section found.',
+                         raw_text_preview: extractedData.rawTextPreview || ''
                      })
                      .eq('id', file.id)
                      .eq('username', req.user.username);
