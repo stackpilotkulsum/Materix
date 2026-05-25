@@ -408,7 +408,7 @@ const parseResume = async (filePath, originalName) => {
 
         const lines = text
             .split('\n')
-            .map(line => line.replace(/^[\s\-*•●▪▫]+/, '').trim())
+            .map(line => line.replace(/^[\s\-*•●▪▫◆]+/, '').trim())
             .filter(Boolean);
 
         const sectionMap = {
@@ -430,7 +430,8 @@ const parseResume = async (filePath, originalName) => {
 
         const normalizeHeading = (line) => line
             .toLowerCase()
-            .replace(/[:|]/g, '')
+            .replace(/[^a-z0-9\s]/g, ' ') // Strip special symbols like ◆, ●, [, ], etc.
+            .replace(/\b\d+\b/g, '')      // Strip standalone list numbers like "1." or "2."
             .replace(/\s+/g, ' ')
             .trim();
 
@@ -465,9 +466,30 @@ const parseResume = async (filePath, originalName) => {
 
         const sectionText = (section, fallback = 'Not found') => clip(sections[section], 1600) || fallback;
         const emailMatches = [...new Set(text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [])];
-        const phoneMatches = [...new Set(text.match(/(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,5}\)?[-.\s]?)?\d{3,5}[-.\s]?\d{4,6}/g) || [])]
+        
+        // Improved phone number extraction: supports local, international, and ignores date ranges (2018-2022) or zip codes
+        const phoneRegexes = [
+            /(?:\+?\d{1,3}[-.\s()]{0,3})?\(?\d{3}\)?[-.\s()]{0,3}\d{3}[-.\s()]{0,3}\d{4}/g,
+            /\b\d{10}\b/g,
+            /(?:\+\d{1,3}[-.\s]?)?\d{5}[-.\s]?\d{5}/g
+        ];
+        let phoneMatches = [];
+        for (const regex of phoneRegexes) {
+            const matches = text.match(regex) || [];
+            phoneMatches.push(...matches);
+        }
+        phoneMatches = [...new Set(phoneMatches)]
             .map(phone => phone.trim())
-            .filter(phone => phone.replace(/\D/g, '').length >= 10);
+            .filter(phone => {
+                const digits = phone.replace(/\D/g, '');
+                if (digits.length < 10 || digits.length > 15) return false;
+                // Exclude matches that consist of year ranges (e.g., contains two 4-digit years like 2018 and 2022)
+                if (phone.includes('201') || phone.includes('202')) {
+                    if (/\b(19|20)\d{2}\b.*?\b(19|20)\d{2}\b/.test(phone)) return false;
+                }
+                return true;
+            });
+
         const portfolioLinks = lines
             .filter(line => /portfolio|website/i.test(line))
             .flatMap(line => line.match(/(?:https?:\/\/|www\.)\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/\S*)?/g) || []);
@@ -501,18 +523,49 @@ const parseResume = async (filePath, originalName) => {
             !isFakeLink(link)
         );
 
+        // Improved name candidate algorithm: filters out common title words, address markers, and formats
         const headerLines = sections.header || lines.slice(0, 8);
-        const nameCandidate = headerLines.find(line => {
-            const lower = line.toLowerCase();
-            return line.length >= 2 &&
-                line.length <= 70 &&
-                !line.includes('@') &&
-                !links.some(link => line.includes(link)) &&
-                !/\d{4,}/.test(line) &&
-                !findHeading(line) &&
-                !lower.includes('resume') &&
-                !lower.includes('curriculum vitae');
-        });
+        const isValidName = (line) => {
+            const trimmed = line.trim();
+            if (trimmed.length < 2 || trimmed.length > 50) return false;
+            if (/\d/.test(trimmed)) return false; // Ignore lines with digits
+            
+            const lower = trimmed.toLowerCase();
+            const blacklist = [
+                'email', 'phone', 'mobile', 'address', 'resume', 'curriculum', 'vitae',
+                'engineer', 'developer', 'designer', 'analyst', 'manager', 'consultant',
+                'student', 'graduate', 'profile', 'contact', 'summary', 'experience',
+                'education', 'skills', 'projects', 'links', 'page', 'portfolio', 'website',
+                'github', 'linkedin', 'gmail', 'yahoo', 'outlook', 'hotmail', 'cv', 'india',
+                'usa', 'dallas', 'texas', 'california', 'university', 'college', 'school'
+            ];
+            if (blacklist.some(word => lower.includes(word))) return false;
+            
+            const words = trimmed.split(/\s+/);
+            if (words.length < 2 || words.length > 4) return false;
+            
+            const isAllCaps = trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed);
+            const isCapitalized = words.every(w => /^[A-Z][a-zA-Z]*$/.test(w));
+            
+            return isAllCaps || isCapitalized;
+        };
+
+        let nameCandidate = headerLines.find(isValidName);
+
+        // Fallback to old name finder if the strict Capitalized Word filter didn't match anything
+        if (!nameCandidate) {
+            nameCandidate = headerLines.find(line => {
+                const lower = line.toLowerCase();
+                return line.length >= 2 &&
+                    line.length <= 70 &&
+                    !line.includes('@') &&
+                    !links.some(link => line.includes(link)) &&
+                    !/\d{4,}/.test(line) &&
+                    !findHeading(line) &&
+                    !lower.includes('resume') &&
+                    !lower.includes('curriculum vitae');
+            });
+        }
 
         const summary = sectionText('summary', lines.find(line => line.length > 70 && !line.includes('@')) || 'No summary found.');
         const extractedData = {
@@ -547,6 +600,11 @@ const parseResume = async (filePath, originalName) => {
         console.error("Parsing error detail:", e);
         return { email: 'Not found', phone: 'Not found', bio: 'Could not parse file: ' + e.message };
     }
+};
+
+const splitText = (text) => {
+    if (!text || typeof text !== 'string' || text.match(/^No .* section found.$/i)) return [];
+    return text.split(/[\n•\-\*]+/).map(s => s.trim()).filter(s => s.length > 2);
 };
 
 // Auth Routes
@@ -940,40 +998,57 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                     console.log(`[UPLOAD] Not a JSON bio or failed to parse for summary:`, jsonErr.message);
                 }
 
-                // Insert into Supabase DB
-                const { error: insertError } = await supabaseAdmin.from('materials').insert([{
-                    username: req.user.username,
-                    email: email,
-                    original_name: safeOriginalName,
-                    file_url: publicUrl,
-                    file_size: f.size,
-                    folder: folderName,
-                    file_count: processedFiles.length,
-                    extracted_bio: bioData,
-                    candidate_name: extractedData.name || 'Not found',
-                    candidate_email: extractedData.email || 'Not found',
-                    candidate_phone: extractedData.phone || 'Not found',
-                    linkedin: extractedData.linkedin || 'Not found',
-                    github: extractedData.github || 'Not found',
-                    portfolio_link: extractedData.portfolioLink || 'Not found',
-                    summary: summaryText,
-                    skills: extractedData.skills || 'No skills section found.',
-                    experience: extractedData.experience || 'No experience section found.',
-                    education: extractedData.education || 'No education section found.',
-                    projects: extractedData.projects || 'No projects section found.',
-                    certifications: extractedData.certifications || 'No certifications section found.',
-                    achievements: extractedData.achievements || 'No achievements section found.',
-                    languages: extractedData.languages || 'No languages section found.',
-                    extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
-                    interests: extractedData.interests || 'No interests section found.',
-                    raw_text_preview: extractedData.rawTextPreview || ''
-                }]);
-
-                if (insertError) {
-                    console.error(`[UPLOAD] DB Insert Error for ${safeOriginalName}:`, insertError);
-                    failedFiles.push(safeOriginalName);
-                    errors[safeOriginalName] = `Database error: ${insertError.message}`;
-                } else {
+                 // Insert into Supabase DB
+                 const { data: insertData, error: insertError } = await supabaseAdmin.from('materials').insert([{
+                     username: req.user.username,
+                     email: email,
+                     original_name: safeOriginalName,
+                     file_url: publicUrl,
+                     file_size: f.size,
+                     folder: folderName,
+                     file_count: processedFiles.length
+                 }]).select('id').single();
+ 
+                 if (insertError) {
+                     console.error(`[UPLOAD] DB Insert Error for ${safeOriginalName}:`, insertError);
+                     failedFiles.push(safeOriginalName);
+                     errors[safeOriginalName] = `Database error: ${insertError.message}`;
+                 } else {
+                     // Insert into candidate_profiles table
+                     if (insertData) {
+                         const { data: profileData, error: profileError } = await supabaseAdmin.from('candidate_profiles').insert([{
+                             material_id: insertData.id,
+                             candidate_name: extractedData.name || 'Not found',
+                             candidate_email: extractedData.email || 'Not found',
+                             candidate_phone: extractedData.phone || 'Not found',
+                             linkedin: extractedData.linkedin || 'Not found',
+                             github: extractedData.github || 'Not found',
+                             portfolio_link: extractedData.portfolioLink || 'Not found',
+                             summary: summaryText,
+                             certifications: extractedData.certifications || 'No certifications section found.',
+                             achievements: extractedData.achievements || 'No achievements section found.',
+                             languages: extractedData.languages || 'No languages section found.',
+                             extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
+                             interests: extractedData.interests || 'No interests section found.',
+                             raw_text_preview: extractedData.rawTextPreview || ''
+                         }]).select('id').single();
+                         
+                         if (profileError) {
+                             console.error(`[UPLOAD] candidate_profiles Insert Error for ${safeOriginalName}:`, profileError);
+                         } else if (profileData) {
+                             const skills = splitText(extractedData.skills);
+                             if (skills.length) await supabaseAdmin.from('candidate_skills').insert(skills.map(s => ({ profile_id: profileData.id, skill_name: s })));
+                             
+                             const experience = splitText(extractedData.experience);
+                             if (experience.length) await supabaseAdmin.from('candidate_experience').insert(experience.map(s => ({ profile_id: profileData.id, description: s })));
+                             
+                             const education = splitText(extractedData.education);
+                             if (education.length) await supabaseAdmin.from('candidate_education').insert(education.map(s => ({ profile_id: profileData.id, description: s })));
+                             
+                             const projects = splitText(extractedData.projects);
+                             if (projects.length) await supabaseAdmin.from('candidate_projects').insert(projects.map(s => ({ profile_id: profileData.id, description: s })));
+                         }
+                     }
                     console.log(`[UPLOAD] Success: ${safeOriginalName}`);
                     uploadedFilesResp.push({
                         name: safeOriginalName,
@@ -1042,7 +1117,7 @@ app.get('/api/files', authenticateToken, async (req, res) => {
     try {
         const { data: files, error } = await supabaseAdmin
             .from('materials')
-            .select('*')
+            .select('*, candidate_profiles(*, candidate_skills(*), candidate_experience(*), candidate_education(*), candidate_projects(*))')
             .eq('username', req.user.username)
             .order('created_at', { ascending: false });
             
@@ -1050,16 +1125,48 @@ app.get('/api/files', authenticateToken, async (req, res) => {
         
         if (error) throw error;
 
+        const fileList = files.map(f => {
+            const profile = (Array.isArray(f.candidate_profiles) ? f.candidate_profiles[0] : f.candidate_profiles) || {};
+            let bioJsonString = f.extracted_bio;
+            
+            if (profile.material_id) {
+                const skillsStr = (profile.candidate_skills || []).map(s => s.skill_name).join('\n');
+                const expStr = (profile.candidate_experience || []).map(e => e.description).join('\n\n');
+                const eduStr = (profile.candidate_education || []).map(e => e.description).join('\n\n');
+                const projStr = (profile.candidate_projects || []).map(p => p.description).join('\n\n');
+                
+                const constructedBio = {
+                    name: profile.candidate_name,
+                    email: profile.candidate_email,
+                    phone: profile.candidate_phone,
+                    linkedin: profile.linkedin,
+                    github: profile.github,
+                    portfolioLink: profile.portfolio_link,
+                    bio: profile.summary,
+                    skills: skillsStr || 'No skills section found.',
+                    experience: expStr || 'No experience section found.',
+                    education: eduStr || 'No education section found.',
+                    projects: projStr || 'No projects section found.',
+                    certifications: profile.certifications,
+                    achievements: profile.achievements,
+                    languages: profile.languages,
+                    extracurricular: profile.extracurricular,
+                    interests: profile.interests,
+                    rawTextPreview: profile.raw_text_preview
+                };
+                bioJsonString = JSON.stringify(constructedBio);
+            }
 
-        const fileList = files.map(f => ({
-            id: f.id,
-            name: f.original_name,
-            size: f.file_size,
-            url: f.file_url,
-            uploadedAt: f.created_at,
-            extracted: { bio: f.extracted_bio },
-            folder: f.folder
-        }));
+            return {
+                id: f.id,
+                name: f.original_name,
+                size: f.file_size,
+                url: f.file_url,
+                uploadedAt: f.created_at,
+                extracted: { bio: bioJsonString },
+                folder: f.folder
+            };
+        });
         
         res.status(200).json(fileList);
     } catch (err) {
@@ -1110,10 +1217,10 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                      console.log(`[REPROCESS] Not a JSON bio or failed to parse for summary:`, jsonErr.message);
                  }
 
-                 const { error: updateError } = await supabaseAdmin
-                     .from('materials')
-                     .update({ 
-                         extracted_bio: bioData,
+                 const { data: profileData, error: updateError } = await supabaseAdmin
+                     .from('candidate_profiles')
+                     .upsert({ 
+                         material_id: file.id,
                          candidate_name: extractedData.name || 'Not found',
                          candidate_email: extractedData.email || 'Not found',
                          candidate_phone: extractedData.phone || 'Not found',
@@ -1121,21 +1228,34 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                          github: extractedData.github || 'Not found',
                          portfolio_link: extractedData.portfolioLink || 'Not found',
                          summary: summaryText,
-                         skills: extractedData.skills || 'No skills section found.',
-                         experience: extractedData.experience || 'No experience section found.',
-                         education: extractedData.education || 'No education section found.',
-                         projects: extractedData.projects || 'No projects section found.',
                          certifications: extractedData.certifications || 'No certifications section found.',
                          achievements: extractedData.achievements || 'No achievements section found.',
                          languages: extractedData.languages || 'No languages section found.',
                          extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
                          interests: extractedData.interests || 'No interests section found.',
                          raw_text_preview: extractedData.rawTextPreview || ''
-                     })
-                     .eq('id', file.id)
-                     .eq('username', req.user.username);
+                     }, { onConflict: 'material_id' }).select('id').single();
 
                 if (updateError) throw updateError;
+                
+                if (profileData) {
+                    await supabaseAdmin.from('candidate_skills').delete().eq('profile_id', profileData.id);
+                    await supabaseAdmin.from('candidate_experience').delete().eq('profile_id', profileData.id);
+                    await supabaseAdmin.from('candidate_education').delete().eq('profile_id', profileData.id);
+                    await supabaseAdmin.from('candidate_projects').delete().eq('profile_id', profileData.id);
+                    
+                    const skills = splitText(extractedData.skills);
+                    if (skills.length) await supabaseAdmin.from('candidate_skills').insert(skills.map(s => ({ profile_id: profileData.id, skill_name: s })));
+                    
+                    const experience = splitText(extractedData.experience);
+                    if (experience.length) await supabaseAdmin.from('candidate_experience').insert(experience.map(s => ({ profile_id: profileData.id, description: s })));
+                    
+                    const education = splitText(extractedData.education);
+                    if (education.length) await supabaseAdmin.from('candidate_education').insert(education.map(s => ({ profile_id: profileData.id, description: s })));
+                    
+                    const projects = splitText(extractedData.projects);
+                    if (projects.length) await supabaseAdmin.from('candidate_projects').insert(projects.map(s => ({ profile_id: profileData.id, description: s })));
+                }
                 updated += 1;
             } catch (refreshError) {
                 failed += 1;
