@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileText, Download, Calendar, HardDrive, Search, Trash2, X, Folder as FolderIcon, Image as ImageIcon } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import api from '../api';
 
 const FileHistory = ({ refreshTrigger }) => {
@@ -126,6 +127,55 @@ const FileHistory = ({ refreshTrigger }) => {
       case 'txt': return <FileText size={24} color="#64748b" />;
       default: return <FileText size={24} />;
     }
+  };
+
+  const exportToExcel = () => {
+    if (filteredFiles.length === 0) {
+      alert("No data to export!");
+      return;
+    }
+
+    const exportData = filteredFiles.map(file => {
+      let details = {};
+      try {
+        if (file.extracted?.bio && file.extracted.bio.startsWith('{')) {
+          details = JSON.parse(file.extracted.bio);
+        } else {
+          details = { bio: file.extracted?.bio || '' };
+        }
+      } catch (e) {
+        details = { bio: file.extracted?.bio || '' };
+      }
+
+      return {
+        "File Name": file.name,
+        "Folder": file.folder || "Single Files",
+        "Upload Date": formatDate(file.uploadedAt),
+        "Size": formatSize(file.size),
+        "Name": details.name || "N/A",
+        "Email": details.email || file.extracted?.email || "N/A",
+        "Phone": details.phone || file.extracted?.phone || "N/A",
+        "LinkedIn": details.linkedin || "N/A",
+        "GitHub": details.github || "N/A",
+        "Portfolio": details.portfolioLink || "N/A",
+        "Summary": details.bio || "",
+        "Skills": details.skills !== "No specific skills section found." ? details.skills : "",
+        "Experience": details.experience !== "No experience section found." ? details.experience : "",
+        "Education": details.education !== "No education section found." ? details.education : "",
+        "Projects": details.projects !== "No projects section found." ? details.projects : "",
+        "Certifications": details.certifications !== "No certifications section found." ? details.certifications : ""
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Resumes");
+
+    // Auto-size the first column
+    const max_width = exportData.reduce((w, r) => Math.max(w, r["File Name"].length), 10);
+    worksheet["!cols"] = [ { wch: max_width } ];
+
+    XLSX.writeFile(workbook, "materix-extracted-resumes.xlsx");
   };
 
   const toggleCard = (index) => {
@@ -269,9 +319,17 @@ const FileHistory = ({ refreshTrigger }) => {
 
   return (
     <section className="history-container" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto', padding: '2rem' }}>
-      <div className="section-header" style={{ marginBottom: '2.5rem', borderBottom: '2px solid #f1f5f9', paddingBottom: '1rem' }}>
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-main)' }}>History & Archives</h2>
-        <span style={{ color: 'var(--text-muted)' }}>{files.length} total files stored securely.</span>
+      <div className="section-header" style={{ marginBottom: '2.5rem', borderBottom: '2px solid #f1f5f9', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-main)' }}>History & Archives</h2>
+          <span style={{ color: 'var(--text-muted)' }}>{files.length} total files stored securely.</span>
+        </div>
+        <button 
+          onClick={exportToExcel}
+          style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 600 }}
+        >
+          <Download size={18} /> Export to Excel
+        </button>
       </div>
 
       {files.length === 0 ? (

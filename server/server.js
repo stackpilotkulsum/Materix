@@ -931,6 +931,14 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                 const publicUrl = publicUrlData.publicUrl;
 
                 console.log(`[UPLOAD] Inserting into DB: ${safeOriginalName}`);
+                
+                let parsed = {};
+                try {
+                    parsed = JSON.parse(bioData);
+                } catch (jsonErr) {
+                    console.log(`[UPLOAD] Not a JSON bio or failed to parse:`, jsonErr.message);
+                }
+
                 // Insert into Supabase DB
                 const { error: insertError } = await supabaseAdmin.from('materials').insert([{
                     username: req.user.username,
@@ -940,7 +948,24 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                     file_size: f.size,
                     folder: folderName,
                     file_count: processedFiles.length,
-                    extracted_bio: bioData
+                    extracted_bio: bioData,
+                    candidate_name: parsed.name || extractedData.name || 'Not found',
+                    candidate_email: parsed.email || extractedData.email || 'Not found',
+                    candidate_phone: parsed.phone || extractedData.phone || 'Not found',
+                    linkedin: parsed.linkedin || extractedData.linkedin || 'Not found',
+                    github: parsed.github || extractedData.github || 'Not found',
+                    portfolio_link: parsed.portfolioLink || extractedData.portfolioLink || 'Not found',
+                    summary: parsed.bio || 'No summary found.',
+                    skills: parsed.skills || 'No skills section found.',
+                    experience: parsed.experience || 'No experience section found.',
+                    education: parsed.education || 'No education section found.',
+                    projects: parsed.projects || 'No projects section found.',
+                    certifications: parsed.certifications || 'No certifications section found.',
+                    achievements: parsed.achievements || 'No achievements section found.',
+                    languages: parsed.languages || 'No languages section found.',
+                    extracurricular: parsed.extracurricular || 'No extra curricular activities section found.',
+                    interests: parsed.interests || 'No interests section found.',
+                    raw_text_preview: parsed.rawTextPreview || ''
                 }]);
 
                 if (insertError) {
@@ -1074,12 +1099,40 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                 const arrayBuffer = await response.arrayBuffer();
                 fs.writeFileSync(tempPath, Buffer.from(arrayBuffer));
 
-                const extractedData = await parseResume(tempPath, file.original_name);
-                const { error: updateError } = await supabaseAdmin
-                    .from('materials')
-                    .update({ extracted_bio: extractedData.bio })
-                    .eq('id', file.id)
-                    .eq('username', req.user.username);
+                 const extractedData = await parseResume(tempPath, file.original_name);
+                 
+                 const bioData = extractedData.bio || '';
+                 let parsed = {};
+                 try {
+                     parsed = JSON.parse(bioData);
+                 } catch (jsonErr) {
+                     console.log(`[REPROCESS] Not a JSON bio or failed to parse:`, jsonErr.message);
+                 }
+
+                 const { error: updateError } = await supabaseAdmin
+                     .from('materials')
+                     .update({ 
+                         extracted_bio: bioData,
+                         candidate_name: parsed.name || extractedData.name || 'Not found',
+                         candidate_email: parsed.email || extractedData.email || 'Not found',
+                         candidate_phone: parsed.phone || extractedData.phone || 'Not found',
+                         linkedin: parsed.linkedin || extractedData.linkedin || 'Not found',
+                         github: parsed.github || extractedData.github || 'Not found',
+                         portfolio_link: parsed.portfolioLink || extractedData.portfolioLink || 'Not found',
+                         summary: parsed.bio || 'No summary found.',
+                         skills: parsed.skills || 'No skills section found.',
+                         experience: parsed.experience || 'No experience section found.',
+                         education: parsed.education || 'No education section found.',
+                         projects: parsed.projects || 'No projects section found.',
+                         certifications: parsed.certifications || 'No certifications section found.',
+                         achievements: parsed.achievements || 'No achievements section found.',
+                         languages: parsed.languages || 'No languages section found.',
+                         extracurricular: parsed.extracurricular || 'No extra curricular activities section found.',
+                         interests: parsed.interests || 'No interests section found.',
+                         raw_text_preview: parsed.rawTextPreview || ''
+                     })
+                     .eq('id', file.id)
+                     .eq('username', req.user.username);
 
                 if (updateError) throw updateError;
                 updated += 1;
