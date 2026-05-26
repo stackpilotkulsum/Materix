@@ -367,7 +367,7 @@ const FileHistory = ({ refreshTrigger }) => {
   };
 
   const sheetPreviewData = buildExportData();
-  const previewColumns = ["File Name", "Name", "Email", "Phone", "LinkedIn", "GitHub", "Portfolio", "Project Links", "All Links"];
+  const previewColumns = sheetPreviewData.length ? Object.keys(sheetPreviewData[0]) : [];
 
   return (
     <section className="history-container" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto', padding: '2rem' }}>
@@ -406,7 +406,7 @@ const FileHistory = ({ refreshTrigger }) => {
               </button>
             </div>
             <div style={{ overflow: 'auto', padding: '16px' }}>
-              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '980px', fontSize: '0.82rem' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '1800px', fontSize: '0.82rem' }}>
                 <thead>
                   <tr>
                     {previewColumns.map(column => (
@@ -418,7 +418,7 @@ const FileHistory = ({ refreshTrigger }) => {
                   {sheetPreviewData.map((row, rowIndex) => (
                     <tr key={`${row["File Name"]}-${rowIndex}`}>
                       {previewColumns.map(column => (
-                        <td key={column} style={{ border: '1px solid #e2e8f0', padding: '10px', color: 'var(--text-muted)', whiteSpace: column.includes('Links') ? 'pre-line' : 'normal', verticalAlign: 'top', maxWidth: column === 'File Name' ? '220px' : '260px', wordBreak: 'break-word' }}>
+                        <td key={column} style={{ border: '1px solid #e2e8f0', padding: '10px', color: 'var(--text-muted)', whiteSpace: column.includes('Links') || ['Summary', 'Skills', 'Experience', 'Education', 'Projects', 'Certifications', 'Achievements', 'Raw Text Preview'].includes(column) ? 'pre-line' : 'normal', verticalAlign: 'top', minWidth: ['Summary', 'Skills', 'Experience', 'Education', 'Projects', 'Raw Text Preview'].includes(column) ? '260px' : '140px', maxWidth: ['Summary', 'Skills', 'Experience', 'Education', 'Projects', 'Raw Text Preview'].includes(column) ? '360px' : '240px', wordBreak: 'break-word' }}>
                           {row[column] || ''}
                         </td>
                       ))}
