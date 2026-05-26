@@ -344,41 +344,18 @@ const parseResume = async (filePath, originalName) => {
 
         if (ext === '.pdf') {
             try {
-                console.log(`[PDF] Attempting standard text extraction using pdfjs-dist: ${originalName}`);
-                const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-                const data = new Uint8Array(fs.readFileSync(filePath));
-                const loadingTask = pdfjsLib.getDocument({ data });
-                const pdf = await loadingTask.promise;
-                
-                let extractedText = '';
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    let lastY;
-                    let pageText = '';
-                    for (const item of textContent.items) {
-                        const y = item.transform && item.transform.length >= 6 ? item.transform[5] : undefined;
-                        if (lastY !== undefined && y !== undefined && Math.abs(y - lastY) > 2) {
-                            pageText += '\n';
-                        } else if (item.hasEOL) {
-                            pageText += '\n';
-                        } else if (pageText.length > 0 && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
-                            pageText += ' ';
-                        }
-                        pageText += item.str;
-                        if (y !== undefined) {
-                            lastY = y;
-                        }
-                    }
-                    extractedText += pageText + '\n';
-                }
-                
-                text = normalizeText(extractedText);
+                console.log(`[PDF] Attempting standard text extraction using pdf-parse: ${originalName}`);
+                const dataBuffer = fs.readFileSync(filePath);
+                const data = await pdfParse(dataBuffer);
+                text = normalizeText(data.text || '');
                 console.log(`[PDF] Text extraction complete. Characters found: ${text.length}`);
                 
                 // Fallback to OCR if extracted text is empty or too short (under 50 chars)
                 if (text.length < 50) {
                     console.log(`[PDF] Extracted text too short (${text.length} chars). Attempting PDF image extraction & OCR...`);
+                    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+                    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(dataBuffer) });
+                    const pdf = await loadingTask.promise;
                     const { OPS } = pdfjsLib;
                     const images = [];
                     
