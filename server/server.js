@@ -344,16 +344,117 @@ const parseResume = async (filePath, originalName) => {
 
         if (ext === '.pdf') {
             try {
-                const dataBuffer = fs.readFileSync(filePath);
-                const data = await pdfParse(dataBuffer);
-                text = data.text || '';
+                console.log(`[PDF] Attempting standard text extraction using pdfjs-dist: ${originalName}`);
+                const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+                const data = new Uint8Array(fs.readFileSync(filePath));
+                const loadingTask = pdfjsLib.getDocument({ data });
+                const pdf = await loadingTask.promise;
+                
+                let extractedText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    let lastY;
+                    let pageText = '';
+                    for (const item of textContent.items) {
+                        const y = item.transform && item.transform.length >= 6 ? item.transform[5] : undefined;
+                        if (lastY !== undefined && y !== undefined && Math.abs(y - lastY) > 2) {
+                            pageText += '\n';
+                        } else if (item.hasEOL) {
+                            pageText += '\n';
+                        } else if (pageText.length > 0 && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
+                            pageText += ' ';
+                        }
+                        pageText += item.str;
+                        if (y !== undefined) {
+                            lastY = y;
+                        }
+                    }
+                    extractedText += pageText + '\n';
+                }
+                
+                text = normalizeText(extractedText);
+                console.log(`[PDF] Text extraction complete. Characters found: ${text.length}`);
+                
+                // Fallback to OCR if extracted text is empty or too short (under 50 chars)
+                if (text.length < 50) {
+                    console.log(`[PDF] Extracted text too short (${text.length} chars). Attempting PDF image extraction & OCR...`);
+                    const { OPS } = pdfjsLib;
+                    const images = [];
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const ops = await page.getOperatorList();
+                        
+                        for (let j = 0; j < ops.fnArray.length; j++) {
+                            if (ops.fnArray[j] === OPS.paintImageXObject) {
+                                const args = ops.argsArray[j];
+                                const imgName = args[0];
+                                const imgObj = page.objs.get(imgName);
+                                if (!imgObj) continue;
+                                
+                                const { width, height, data: imgData } = imgObj;
+                                if (!(imgData instanceof Uint8ClampedArray) || typeof width !== 'number' || typeof height !== 'number') {
+                                    continue;
+                                }
+                                
+                                const { PNG } = require('pngjs');
+                                const png = new PNG({ width, height });
+                                
+                                if (imgData.length === width * height * 3) {
+                                    const rgbaData = new Uint8ClampedArray(width * height * 4);
+                                    for (let k = 0; k < imgData.length; k += 3) {
+                                        const rgbaIndex = (k * 4) / 3;
+                                        rgbaData[rgbaIndex] = imgData[k];
+                                        rgbaData[rgbaIndex + 1] = imgData[k + 1];
+                                        rgbaData[rgbaIndex + 2] = imgData[k + 2];
+                                        rgbaData[rgbaIndex + 3] = 255;
+                                    }
+                                    png.data = Buffer.from(rgbaData);
+                                } else {
+                                    png.data = Buffer.from(imgData);
+                                }
+                                
+                                images.push(PNG.sync.write(png));
+                            }
+                        }
+                    }
+                    
+                    console.log(`[PDF] Extracted ${images.length} images from scanned PDF. Running OCR...`);
+                    if (images.length > 0) {
+                        let ocrText = '';
+                        for (let idx = 0; idx < images.length; idx++) {
+                            const buffer = images[idx];
+                            console.log(`[OCR] Running Tesseract on PDF page-image ${idx + 1}/${images.length}...`);
+                            try {
+                                const { data: { text: pageText } } = await Tesseract.recognize(buffer, 'eng');
+                                ocrText += (pageText || '') + '\n';
+                            } catch (ocrPageErr) {
+                                console.error(`[OCR] Error recognizing PDF page-image ${idx + 1}:`, ocrPageErr.message);
+                            }
+                        }
+                        
+                        const normalizedOcrText = normalizeText(ocrText);
+                        if (normalizedOcrText.length > 50) {
+                            text = normalizedOcrText;
+                            console.log(`[PDF] OCR successful. Extracted ${text.length} characters.`);
+                        }
+                    }
+                }
             } catch (pdfErr) {
-                console.error('pdf-parse error:', pdfErr.message);
-                return { 
-                    email: 'Not found', 
-                    phone: 'Not found', 
-                    bio: 'Could not parse PDF file'
-                };
+                console.error('[PDF] pdfjs-dist error, falling back to pdf-parse:', pdfErr.message);
+                try {
+                    const dataBuffer = fs.readFileSync(filePath);
+                    const data = await pdfParse(dataBuffer);
+                    text = normalizeText(data.text || '');
+                } catch (pdfParseErr) {
+                    console.error('[PDF] pdf-parse fallback error:', pdfParseErr.message);
+                    return { 
+                        email: 'Not found', 
+                        phone: 'Not found', 
+                        bio: 'Could not parse PDF file: ' + pdfErr.message
+                    };
+                }
             }
         } else if (ext === '.docx') {
             text = readDocxText(filePath);
