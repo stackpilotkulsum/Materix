@@ -57,7 +57,7 @@ const formatDate = (dateString) => {
 };
 
 const parseExtraction = (file) => {
-  const rawBio = file.extracted?.bio || '';
+  const rawBio = (file.extracted?.bio || '').trim();
   let data = {};
   let status = 'ready';
   let error = null;

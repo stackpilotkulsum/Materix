@@ -129,6 +129,24 @@ const FileHistory = ({ refreshTrigger }) => {
     }
   };
 
+  const getExtractionDetails = (file) => {
+    try {
+      if (file.extracted?.bio && file.extracted.bio.startsWith('{')) {
+        return JSON.parse(file.extracted.bio);
+      }
+    } catch (e) {
+      console.error('Unable to parse extraction details:', e);
+    }
+
+    return {
+      bio: file.extracted?.bio || '',
+      email: file.extracted?.email,
+      phone: file.extracted?.phone,
+    };
+  };
+
+  const joinLinks = (links) => Array.isArray(links) ? links.filter(Boolean).join('\n') : '';
+
   const exportToExcel = () => {
     if (filteredFiles.length === 0) {
       alert("No data to export!");
@@ -136,16 +154,7 @@ const FileHistory = ({ refreshTrigger }) => {
     }
 
     const exportData = filteredFiles.map(file => {
-      let details = {};
-      try {
-        if (file.extracted?.bio && file.extracted.bio.startsWith('{')) {
-          details = JSON.parse(file.extracted.bio);
-        } else {
-          details = { bio: file.extracted?.bio || '' };
-        }
-      } catch (e) {
-        details = { bio: file.extracted?.bio || '' };
-      }
+      const details = getExtractionDetails(file);
 
       return {
         "File Name": file.name,
@@ -158,6 +167,8 @@ const FileHistory = ({ refreshTrigger }) => {
         "LinkedIn": details.linkedin || "N/A",
         "GitHub": details.github || "N/A",
         "Portfolio": details.portfolioLink || "N/A",
+        "Project Links": joinLinks(details.projectLinks),
+        "All Links": joinLinks(details.links),
         "Summary": details.bio || "",
         "Skills": details.skills !== "No specific skills section found." ? details.skills : "",
         "Experience": details.experience !== "No experience section found." ? details.experience : "",
@@ -188,6 +199,8 @@ const FileHistory = ({ refreshTrigger }) => {
       { wch: 20 }, // LinkedIn
       { wch: 20 }, // GitHub
       { wch: 20 }, // Portfolio
+      { wch: 35 }, // Project Links
+      { wch: 35 }, // All Links
       { wch: 40 }, // Summary
       { wch: 30 }, // Skills
       { wch: 40 }, // Experience
@@ -275,12 +288,7 @@ const FileHistory = ({ refreshTrigger }) => {
                 </h5>
                 
                 {(() => {
-                  let details = { bio: file.extracted.bio };
-                  try {
-                    if (file.extracted.bio && file.extracted.bio.startsWith('{')) {
-                      details = JSON.parse(file.extracted.bio);
-                    }
-                  } catch (e) {}
+                  const details = getExtractionDetails(file);
 
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

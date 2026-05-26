@@ -567,26 +567,27 @@ const parseResume = async (filePath, originalName) => {
                 return true;
             });
 
+        const urlPattern = /(?:https?:\/\/|www\.)[^\s<>"']+|(?:linkedin\.com|github\.com|portfolio\.)[^\s<>"']*|(?:[a-zA-Z0-9-]+\.)+(?:com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|vercel\.app|netlify\.app)(?:\/[^\s<>"']*)?/gi;
         const portfolioLinks = lines
             .filter(line => /portfolio|website/i.test(line))
-            .flatMap(line => line.match(/(?:https?:\/\/|www\.)\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/\S*)?/g) || []);
+            .flatMap(line => line.match(urlPattern) || []);
         const labeledProjectLinks = lines
             .filter(line => /project link|project url|demo link|live link/i.test(line))
-            .flatMap(line => line.match(/(?:https?:\/\/|www\.)\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/\S*)?/g) || []);
+            .flatMap(line => line.match(urlPattern) || []);
         const isMailLink = (link) => /(^mailto:|gmail\.com|googlemail\.com|mail\.google\.com)/i.test(link);
         const rawLinkedinMatches = (text.match(/(?:linkedin\.com\/\S*)/gi) || []).map(l => l.replace(/[),.;]+$/, ''));
         const rawGithubMatches = (text.match(/(?:github\.com\/\S*)/gi) || []).map(l => l.replace(/[),.;]+$/, ''));
         const links = [...new Set([
-            ...(text.match(/(?:https?:\/\/|www\.)\S+|(?:linkedin\.com|github\.com|portfolio\.)\S*/gi) || []),
+            ...(text.match(urlPattern) || []),
             ...rawLinkedinMatches,
             ...rawGithubMatches,
             ...portfolioLinks,
             ...labeledProjectLinks
         ])]
-            .map(link => link.replace(/[),.;]+$/, ''))
+            .map(link => link.replace(/^[([<{]+/, '').replace(/[)\],.;}>]+$/, ''))
             .filter(link => link && !isMailLink(link));
         const isFakeLink = (link) => /\.(js|ts|jsx|tsx|py|java|css|html|md|pdf|png|jpg|svg|zip|rb|go|rs|cpp|c)$/i.test(link);
-        const isRealUrl = (link) => /^https?:\/\//i.test(link) || /^www\./i.test(link) || /\.(com|io|app|dev|net|org|co|in)(\/|$)/i.test(link);
+        const isRealUrl = (link) => /^https?:\/\//i.test(link) || /^www\./i.test(link) || /\.(com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud)(\/|$)/i.test(link);
         const linkedin = links.find(link => /linkedin\.com/i.test(link)) || 'Not found';
         const github = links.find(link => /github\.com/i.test(link)) || 'Not found';
         const portfolioLink = links.find(link =>
@@ -682,6 +683,34 @@ const parseResume = async (filePath, originalName) => {
 const splitText = (text) => {
     if (!text || typeof text !== 'string' || text.match(/^No .* section found.$/i)) return [];
     return text.split(/[\n•\-\*]+/).map(s => s.trim()).filter(s => s.length > 2);
+};
+
+const parseStoredExtraction = (value) => {
+    if (!value || typeof value !== 'string' || !value.trim().startsWith('{')) return {};
+    try {
+        return JSON.parse(value);
+    } catch {
+        return {};
+    }
+};
+
+const extractLinksFromText = (value) => {
+    if (!value || typeof value !== 'string') return [];
+    const matches = value.match(/(?:https?:\/\/|www\.)[^\s<>"']+|(?:linkedin\.com|github\.com|portfolio\.)[^\s<>"']*|(?:[a-zA-Z0-9-]+\.)+(?:com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|vercel\.app|netlify\.app)(?:\/[^\s<>"']*)?/gi) || [];
+    return [...new Set(matches
+        .map(link => link.replace(/^[([<{]+/, '').replace(/[)\],.;}>]+$/, ''))
+        .filter(link => link && !/(^mailto:|gmail\.com|googlemail\.com|mail\.google\.com)/i.test(link))
+    )];
+};
+
+const getMaterialStoragePath = (fileUrl) => {
+    if (!fileUrl || typeof fileUrl !== 'string') return null;
+    const marker = '/materials/';
+    const markerIndex = fileUrl.indexOf(marker);
+    if (markerIndex >= 0) {
+        return decodeURIComponent(fileUrl.slice(markerIndex + marker.length).split('?')[0]);
+    }
+    return null;
 };
 
 // Auth Routes
@@ -1083,7 +1112,25 @@ app.post('/api/upload', authenticateToken, (req, res) => {
                      file_url: publicUrl,
                      file_size: f.size,
                      folder: folderName,
-                     file_count: processedFiles.length
+                     file_count: processedFiles.length,
+                     extracted_bio: bioData,
+                     candidate_name: extractedData.name || 'Not found',
+                     candidate_email: extractedData.email || 'Not found',
+                     candidate_phone: extractedData.phone || 'Not found',
+                     linkedin: extractedData.linkedin || 'Not found',
+                     github: extractedData.github || 'Not found',
+                     portfolio_link: extractedData.portfolioLink || 'Not found',
+                     summary: summaryText,
+                     skills: extractedData.skills || 'No skills section found.',
+                     experience: extractedData.experience || 'No experience section found.',
+                     education: extractedData.education || 'No education section found.',
+                     projects: extractedData.projects || 'No projects section found.',
+                     certifications: extractedData.certifications || 'No certifications section found.',
+                     achievements: extractedData.achievements || 'No achievements section found.',
+                     languages: extractedData.languages || 'No languages section found.',
+                     extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
+                     interests: extractedData.interests || 'No interests section found.',
+                     raw_text_preview: extractedData.rawTextPreview || ''
                  }]).select('id').single();
  
                  if (insertError) {
@@ -1204,14 +1251,33 @@ app.get('/api/files', authenticateToken, async (req, res) => {
 
         const fileList = files.map(f => {
             const profile = (Array.isArray(f.candidate_profiles) ? f.candidate_profiles[0] : f.candidate_profiles) || {};
-            let bioJsonString = f.extracted_bio;
+            const storedExtraction = parseStoredExtraction(f.extracted_bio);
+            const storedLinks = Array.isArray(storedExtraction.links) ? storedExtraction.links : [];
+            const storedProjectLinks = Array.isArray(storedExtraction.projectLinks) ? storedExtraction.projectLinks : [];
+            let bioJsonString = null;
             
             if (profile.material_id) {
+                // Source 1: Normalized candidate_profiles tables
                 const skillsStr = (profile.candidate_skills || []).map(s => s.skill_name).join('\n');
                 const expStr = (profile.candidate_experience || []).map(e => e.description).join('\n\n');
                 const eduStr = (profile.candidate_education || []).map(e => e.description).join('\n\n');
                 const projStr = (profile.candidate_projects || []).map(p => p.description).join('\n\n');
                 
+                const fallbackLinks = storedLinks.length ? storedLinks : extractLinksFromText([
+                    profile.linkedin,
+                    profile.github,
+                    profile.portfolio_link,
+                    profile.summary,
+                    skillsStr,
+                    expStr,
+                    eduStr,
+                    projStr,
+                    profile.raw_text_preview
+                ].filter(Boolean).join('\n'));
+                const fallbackProjectLinks = storedProjectLinks.length
+                    ? storedProjectLinks
+                    : fallbackLinks.filter(link => !/linkedin\.com|github\.com/i.test(link) && link !== profile.portfolio_link);
+
                 const constructedBio = {
                     name: profile.candidate_name,
                     email: profile.candidate_email,
@@ -1219,6 +1285,8 @@ app.get('/api/files', authenticateToken, async (req, res) => {
                     linkedin: profile.linkedin,
                     github: profile.github,
                     portfolioLink: profile.portfolio_link,
+                    links: fallbackLinks,
+                    projectLinks: fallbackProjectLinks,
                     bio: profile.summary,
                     skills: skillsStr || 'No skills section found.',
                     experience: expStr || 'No experience section found.',
@@ -1232,6 +1300,48 @@ app.get('/api/files', authenticateToken, async (req, res) => {
                     rawTextPreview: profile.raw_text_preview
                 };
                 bioJsonString = JSON.stringify(constructedBio);
+            } else if (f.candidate_name && f.candidate_name !== 'Not found') {
+                // Source 2: Flat columns on materials table
+                const fallbackLinks = storedLinks.length ? storedLinks : extractLinksFromText([
+                    f.linkedin,
+                    f.github,
+                    f.portfolio_link,
+                    f.summary,
+                    f.skills,
+                    f.experience,
+                    f.education,
+                    f.projects,
+                    f.raw_text_preview
+                ].filter(Boolean).join('\n'));
+                const fallbackProjectLinks = storedProjectLinks.length
+                    ? storedProjectLinks
+                    : fallbackLinks.filter(link => !/linkedin\.com|github\.com/i.test(link) && link !== f.portfolio_link);
+
+                const constructedBio = {
+                    name: f.candidate_name || 'Not found',
+                    email: f.candidate_email || 'Not found',
+                    phone: f.candidate_phone || 'Not found',
+                    linkedin: f.linkedin || 'Not found',
+                    github: f.github || 'Not found',
+                    portfolioLink: f.portfolio_link || 'Not found',
+                    links: fallbackLinks,
+                    projectLinks: fallbackProjectLinks,
+                    bio: f.summary || 'No summary found.',
+                    skills: f.skills || 'No skills section found.',
+                    experience: f.experience || 'No experience section found.',
+                    education: f.education || 'No education section found.',
+                    projects: f.projects || 'No projects section found.',
+                    certifications: f.certifications || 'No certifications section found.',
+                    achievements: f.achievements || 'No achievements section found.',
+                    languages: f.languages || 'No languages section found.',
+                    extracurricular: f.extracurricular || 'No extra curricular activities section found.',
+                    interests: f.interests || 'No interests section found.',
+                    rawTextPreview: f.raw_text_preview || ''
+                };
+                bioJsonString = JSON.stringify(constructedBio);
+            } else {
+                // Source 3: Raw extracted_bio JSON string
+                bioJsonString = f.extracted_bio;
             }
 
             return {
@@ -1278,11 +1388,31 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
             const tempPath = path.join(uploadDir, `${crypto.randomUUID()}${ext}`);
 
             try {
-                const response = await fetch(file.file_url);
-                if (!response.ok) throw new Error(`Download failed with status ${response.status}`);
+                let fileBuffer = null;
+                try {
+                    const response = await fetch(file.file_url);
+                    if (response.ok) {
+                        const arrayBuffer = await response.arrayBuffer();
+                        fileBuffer = Buffer.from(arrayBuffer);
+                    } else {
+                        console.warn(`[REPROCESS] Public download failed for ${file.original_name}: ${response.status}`);
+                    }
+                } catch (downloadError) {
+                    console.warn(`[REPROCESS] Public download error for ${file.original_name}: ${downloadError.message}`);
+                }
 
-                const arrayBuffer = await response.arrayBuffer();
-                fs.writeFileSync(tempPath, Buffer.from(arrayBuffer));
+                if (!fileBuffer) {
+                    const bucketPath = getMaterialStoragePath(file.file_url);
+                    if (!bucketPath) throw new Error('Could not determine Supabase storage path');
+
+                    const { data: storageData, error: storageError } = await supabaseAdmin.storage.from('materials').download(bucketPath);
+                    if (storageError) throw storageError;
+
+                    const arrayBuffer = await storageData.arrayBuffer();
+                    fileBuffer = Buffer.from(arrayBuffer);
+                }
+
+                fs.writeFileSync(tempPath, fileBuffer);
 
                  const extractedData = await parseResume(tempPath, file.original_name);
                  const bioData = extractedData.bio || '';
@@ -1293,6 +1423,28 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                  } catch (jsonErr) {
                      console.log(`[REPROCESS] Not a JSON bio or failed to parse for summary:`, jsonErr.message);
                  }
+
+                 // Update materials table with extracted data
+                 await supabaseAdmin.from('materials').update({
+                     extracted_bio: bioData,
+                     candidate_name: extractedData.name || 'Not found',
+                     candidate_email: extractedData.email || 'Not found',
+                     candidate_phone: extractedData.phone || 'Not found',
+                     linkedin: extractedData.linkedin || 'Not found',
+                     github: extractedData.github || 'Not found',
+                     portfolio_link: extractedData.portfolioLink || 'Not found',
+                     summary: summaryText,
+                     skills: extractedData.skills || 'No skills section found.',
+                     experience: extractedData.experience || 'No experience section found.',
+                     education: extractedData.education || 'No education section found.',
+                     projects: extractedData.projects || 'No projects section found.',
+                     certifications: extractedData.certifications || 'No certifications section found.',
+                     achievements: extractedData.achievements || 'No achievements section found.',
+                     languages: extractedData.languages || 'No languages section found.',
+                     extracurricular: extractedData.extracurricular || 'No extra curricular activities section found.',
+                     interests: extractedData.interests || 'No interests section found.',
+                     raw_text_preview: extractedData.rawTextPreview || ''
+                 }).eq('id', file.id);
 
                  const { data: profileData, error: updateError } = await supabaseAdmin
                      .from('candidate_profiles')
