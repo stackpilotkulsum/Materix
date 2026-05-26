@@ -343,15 +343,21 @@ const parseResume = async (filePath, originalName) => {
         let text = '';
 
         if (ext === '.pdf') {
+            const dataBuffer = fs.readFileSync(filePath);
+            
             try {
                 console.log(`[PDF] Attempting standard text extraction using pdf-parse: ${originalName}`);
-                const dataBuffer = fs.readFileSync(filePath);
                 const data = await pdfParse(dataBuffer);
                 text = normalizeText(data.text || '');
                 console.log(`[PDF] Text extraction complete. Characters found: ${text.length}`);
-                
-                // Fallback to OCR if extracted text is empty or too short (under 50 chars)
-                if (text.length < 50) {
+            } catch (pdfParseErr) {
+                console.error('[PDF] pdf-parse error:', pdfParseErr.message);
+                text = ''; // Trigger OCR fallback
+            }
+            
+            // Fallback to OCR if extracted text is empty or too short (under 50 chars)
+            if (text.length < 50) {
+                try {
                     console.log(`[PDF] Extracted text too short (${text.length} chars). Attempting PDF image extraction & OCR...`);
                     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
                     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(dataBuffer) });
@@ -417,19 +423,12 @@ const parseResume = async (filePath, originalName) => {
                             console.log(`[PDF] OCR successful. Extracted ${text.length} characters.`);
                         }
                     }
-                }
-            } catch (pdfErr) {
-                console.error('[PDF] pdfjs-dist error, falling back to pdf-parse:', pdfErr.message);
-                try {
-                    const dataBuffer = fs.readFileSync(filePath);
-                    const data = await pdfParse(dataBuffer);
-                    text = normalizeText(data.text || '');
-                } catch (pdfParseErr) {
-                    console.error('[PDF] pdf-parse fallback error:', pdfParseErr.message);
+                } catch (ocrErr) {
+                    console.error('[PDF] OCR fallback error:', ocrErr.message);
                     return { 
                         email: 'Not found', 
                         phone: 'Not found', 
-                        bio: 'Could not parse PDF file: ' + pdfErr.message
+                        bio: 'Could not parse PDF file: ' + ocrErr.message
                     };
                 }
             }
