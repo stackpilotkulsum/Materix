@@ -303,6 +303,7 @@ const parseResume = async (filePath, originalName) => {
     const ext = path.extname(originalName).toLowerCase();
 
     const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp'];
+    const urlPattern = /(?:https?:\/\/|www\.)[^\s<>"']+|(?:linkedin\.com|github\.com|portfolio\.)[^\s<>"']*|(?:[a-zA-Z0-9-]+\.)+(?:com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|jobs|work|page|pages\.dev|vercel\.app|netlify\.app)(?:\/[^\s<>"']*)?/gi;
 
     const normalizeText = (value) => value
         .replace(/\r/g, '\n')
@@ -328,6 +329,44 @@ const parseResume = async (filePath, originalName) => {
         return stripXml(documentEntry.getData().toString('utf8'));
     };
 
+    const readDocxLinks = (targetPath) => {
+        try {
+            const zip = new AdmZip(targetPath);
+            const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
+            if (!relsEntry) return [];
+            const relsXml = relsEntry.getData().toString('utf8');
+            return [...relsXml.matchAll(/<Relationship\b[^>]*Type="[^"]*\/hyperlink"[^>]*Target="([^"]+)"/gi)]
+                .map(match => match[1].replace(/&amp;/g, '&'))
+                .filter(Boolean);
+        } catch (error) {
+            console.warn(`[DOCX] Could not read hyperlink relationships for ${originalName}:`, error.message);
+            return [];
+        }
+    };
+
+    const readPdfLinks = async (dataBuffer) => {
+        try {
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(dataBuffer) });
+            const pdf = await loadingTask.promise;
+            const annotationLinks = [];
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const annotations = await page.getAnnotations();
+                annotations.forEach(annotation => {
+                    if (annotation?.url) annotationLinks.push(annotation.url);
+                    if (annotation?.unsafeUrl) annotationLinks.push(annotation.unsafeUrl);
+                });
+            }
+
+            return annotationLinks;
+        } catch (error) {
+            console.warn(`[PDF] Could not read hyperlink annotations for ${originalName}:`, error.message);
+            return [];
+        }
+    };
+
     const compact = (value, fallback = 'Not found') => {
         if (!value) return fallback;
         const cleaned = Array.isArray(value) ? value.filter(Boolean).join('\n') : String(value);
@@ -341,9 +380,11 @@ const parseResume = async (filePath, originalName) => {
 
     try {
         let text = '';
+        let embeddedLinks = [];
 
         if (ext === '.pdf') {
             const dataBuffer = fs.readFileSync(filePath);
+            embeddedLinks = await readPdfLinks(dataBuffer);
             
             try {
                 console.log(`[PDF] Attempting standard text extraction using pdf-parse: ${originalName}`);
@@ -434,6 +475,7 @@ const parseResume = async (filePath, originalName) => {
             }
         } else if (ext === '.docx') {
             text = readDocxText(filePath);
+            embeddedLinks = readDocxLinks(filePath);
         } else if (ext === '.txt') {
             text = fs.readFileSync(filePath, 'utf8');
         } else if (imageExts.includes(ext)) {
@@ -567,7 +609,6 @@ const parseResume = async (filePath, originalName) => {
                 return true;
             });
 
-        const urlPattern = /(?:https?:\/\/|www\.)[^\s<>"']+|(?:linkedin\.com|github\.com|portfolio\.)[^\s<>"']*|(?:[a-zA-Z0-9-]+\.)+(?:com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|vercel\.app|netlify\.app)(?:\/[^\s<>"']*)?/gi;
         const portfolioLinks = lines
             .filter(line => /portfolio|website/i.test(line))
             .flatMap(line => line.match(urlPattern) || []);
@@ -582,12 +623,13 @@ const parseResume = async (filePath, originalName) => {
             ...rawLinkedinMatches,
             ...rawGithubMatches,
             ...portfolioLinks,
-            ...labeledProjectLinks
+            ...labeledProjectLinks,
+            ...embeddedLinks
         ])]
             .map(link => link.replace(/^[([<{]+/, '').replace(/[)\],.;}>]+$/, ''))
             .filter(link => link && !isMailLink(link));
         const isFakeLink = (link) => /\.(js|ts|jsx|tsx|py|java|css|html|md|pdf|png|jpg|svg|zip|rb|go|rs|cpp|c)$/i.test(link);
-        const isRealUrl = (link) => /^https?:\/\//i.test(link) || /^www\./i.test(link) || /\.(com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud)(\/|$)/i.test(link);
+        const isRealUrl = (link) => /^https?:\/\//i.test(link) || /^www\./i.test(link) || /\.(com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|jobs|work|page)(\/|$)/i.test(link);
         const linkedin = links.find(link => /linkedin\.com/i.test(link)) || 'Not found';
         const github = links.find(link => /github\.com/i.test(link)) || 'Not found';
         const portfolioLink = links.find(link =>
@@ -696,10 +738,19 @@ const parseStoredExtraction = (value) => {
 
 const extractLinksFromText = (value) => {
     if (!value || typeof value !== 'string') return [];
-    const matches = value.match(/(?:https?:\/\/|www\.)[^\s<>"']+|(?:linkedin\.com|github\.com|portfolio\.)[^\s<>"']*|(?:[a-zA-Z0-9-]+\.)+(?:com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|vercel\.app|netlify\.app)(?:\/[^\s<>"']*)?/gi) || [];
-    return [...new Set(matches
-        .map(link => link.replace(/^[([<{]+/, '').replace(/[)\],.;}>]+$/, ''))
-        .filter(link => link && !/(^mailto:|gmail\.com|googlemail\.com|mail\.google\.com)/i.test(link))
+    const matches = value.match(/(?:https?:\/\/|www\.)[^\s<>"']+|(?:linkedin\.com|github\.com|portfolio\.)[^\s<>"']*|(?:[a-zA-Z0-9-]+\.)+(?:com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|jobs|work|page|pages\.dev|vercel\.app|netlify\.app)(?:\/[^\s<>"']*)?/gi) || [];
+    return normalizeExtractedLinks(matches);
+};
+
+const normalizeExtractedLinks = (links) => {
+    if (!Array.isArray(links)) return [];
+    return [...new Set(links
+        .map(link => typeof link === 'string' ? link.replace(/^[([<{]+/, '').replace(/[)\],.;}>]+$/, '').trim() : '')
+        .filter(link =>
+            link &&
+            !/(^mailto:|gmail\.com|googlemail\.com|mail\.google\.com)/i.test(link) &&
+            (/^(https?:\/\/|www\.)/i.test(link) || /(?:linkedin|github)\.com/i.test(link) || /\.(com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|jobs|work|page)(\/|$)/i.test(link))
+        )
     )];
 };
 
@@ -1252,8 +1303,8 @@ app.get('/api/files', authenticateToken, async (req, res) => {
         const fileList = files.map(f => {
             const profile = (Array.isArray(f.candidate_profiles) ? f.candidate_profiles[0] : f.candidate_profiles) || {};
             const storedExtraction = parseStoredExtraction(f.extracted_bio);
-            const storedLinks = Array.isArray(storedExtraction.links) ? storedExtraction.links : [];
-            const storedProjectLinks = Array.isArray(storedExtraction.projectLinks) ? storedExtraction.projectLinks : [];
+            const storedLinks = normalizeExtractedLinks(storedExtraction.links);
+            const storedProjectLinks = normalizeExtractedLinks(storedExtraction.projectLinks);
             let bioJsonString = null;
             
             if (profile.material_id) {

@@ -145,7 +145,18 @@ const FileHistory = ({ refreshTrigger }) => {
     };
   };
 
-  const joinLinks = (links) => Array.isArray(links) ? links.filter(Boolean).join('\n') : '';
+  const isRealLink = (link) => (
+    /^(https?:\/\/|www\.)/i.test(link) ||
+    /(?:linkedin|github)\.com/i.test(link) ||
+    /\.(com|io|app|dev|net|org|co|in|me|ai|xyz|site|tech|cloud|jobs|work|page)(\/|$)/i.test(link)
+  );
+
+  const joinLinks = (links) => Array.isArray(links)
+    ? links
+        .map(link => typeof link === 'string' ? link.trim() : '')
+        .filter(link => link && isRealLink(link))
+        .join('\n')
+    : '';
 
   const exportToExcel = () => {
     if (filteredFiles.length === 0) {
