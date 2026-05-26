@@ -163,7 +163,12 @@ const FileHistory = ({ refreshTrigger }) => {
         "Experience": details.experience !== "No experience section found." ? details.experience : "",
         "Education": details.education !== "No education section found." ? details.education : "",
         "Projects": details.projects !== "No projects section found." ? details.projects : "",
-        "Certifications": details.certifications !== "No certifications section found." ? details.certifications : ""
+        "Certifications": details.certifications !== "No certifications section found." ? details.certifications : "",
+        "Achievements": details.achievements !== "No achievements section found." ? details.achievements : "",
+        "Languages": details.languages !== "No languages section found." ? details.languages : "",
+        "Extracurricular": details.extracurricular !== "No extra curricular activities section found." ? details.extracurricular : "",
+        "Interests": details.interests !== "No interests section found." ? details.interests : "",
+        "Raw Text Preview": details.rawTextPreview || ""
       };
     });
 
@@ -171,9 +176,31 @@ const FileHistory = ({ refreshTrigger }) => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Resumes");
 
-    // Auto-size the first column
-    const max_width = exportData.reduce((w, r) => Math.max(w, r["File Name"].length), 10);
-    worksheet["!cols"] = [ { wch: max_width } ];
+    // Auto-size columns to make them more readable
+    const colWidths = [
+      { wch: 30 }, // File Name
+      { wch: 15 }, // Folder
+      { wch: 15 }, // Upload Date
+      { wch: 10 }, // Size
+      { wch: 20 }, // Name
+      { wch: 25 }, // Email
+      { wch: 15 }, // Phone
+      { wch: 20 }, // LinkedIn
+      { wch: 20 }, // GitHub
+      { wch: 20 }, // Portfolio
+      { wch: 40 }, // Summary
+      { wch: 30 }, // Skills
+      { wch: 40 }, // Experience
+      { wch: 40 }, // Education
+      { wch: 40 }, // Projects
+      { wch: 30 }, // Certifications
+      { wch: 30 }, // Achievements
+      { wch: 20 }, // Languages
+      { wch: 30 }, // Extracurricular
+      { wch: 30 }, // Interests
+      { wch: 50 }  // Raw Text Preview
+    ];
+    worksheet["!cols"] = colWidths;
 
     XLSX.writeFile(workbook, "materix-extracted-resumes.xlsx");
   };
