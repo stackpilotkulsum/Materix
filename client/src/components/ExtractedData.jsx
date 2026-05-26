@@ -160,7 +160,11 @@ const ExtractedData = () => {
         },
       });
 
-      setRefreshMessage(response.data.message || 'Existing resumes refreshed.');
+      const failures = response.data.failures || [];
+      const failureText = failures.length
+        ? ` Details: ${failures.map(item => `${item.file}: ${item.reason}`).join(' | ')}`
+        : '';
+      setRefreshMessage(`${response.data.message || 'Existing resumes refreshed.'}${failureText}`);
       await fetchProfiles();
     } catch (error) {
       const message = error.response?.data?.message || 'Unable to refresh existing resumes.';

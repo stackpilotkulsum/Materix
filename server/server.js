@@ -1427,12 +1427,14 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
 
         let updated = 0;
         let failed = 0;
+        const failures = [];
 
         for (const file of files) {
             const ext = path.extname(file.original_name || '').toLowerCase();
             const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp'];
             if (!['.pdf', '.docx', '.txt', ...imageExts].includes(ext) || !file.file_url) {
                 failed += 1;
+                failures.push({ file: file.original_name, reason: !file.file_url ? 'Missing stored file URL' : `Unsupported file type: ${ext || 'unknown'}` });
                 continue;
             }
 
@@ -1476,7 +1478,7 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                  }
 
                  // Update materials table with extracted data
-                 await supabaseAdmin.from('materials').update({
+                 const { error: materialUpdateError } = await supabaseAdmin.from('materials').update({
                      extracted_bio: bioData,
                      candidate_name: extractedData.name || 'Not found',
                      candidate_email: extractedData.email || 'Not found',
@@ -1496,6 +1498,7 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                      interests: extractedData.interests || 'No interests section found.',
                      raw_text_preview: extractedData.rawTextPreview || ''
                  }).eq('id', file.id);
+                 if (materialUpdateError) throw materialUpdateError;
 
                  const { data: profileData, error: updateError } = await supabaseAdmin
                      .from('candidate_profiles')
@@ -1539,6 +1542,7 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
                 updated += 1;
             } catch (refreshError) {
                 failed += 1;
+                failures.push({ file: file.original_name, reason: refreshError.message });
                 console.error(`Reprocess error for ${file.original_name}:`, refreshError.message);
             } finally {
                 try {
@@ -1552,7 +1556,8 @@ app.post('/api/files/reprocess', authenticateToken, async (req, res) => {
         res.status(200).json({
             message: `Refreshed ${updated} resume(s).${failed ? ` ${failed} file(s) could not be refreshed.` : ''}`,
             updated,
-            failed
+            failed,
+            failures: failures.slice(0, 10)
         });
     } catch (err) {
         console.error('Reprocess Error:', err.message);

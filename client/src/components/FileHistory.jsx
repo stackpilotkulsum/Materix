@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Calendar, HardDrive, Search, Trash2, X, Folder as FolderIcon, Image as ImageIcon } from 'lucide-react';
+import { FileText, Download, Calendar, HardDrive, Search, Trash2, X, Folder as FolderIcon, Image as ImageIcon, Eye } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import api from '../api';
 
@@ -8,6 +8,7 @@ const FileHistory = ({ refreshTrigger }) => {
   const [loading, setLoading] = useState(true);
   const [expandedCard, setExpandedCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sheetPreviewOpen, setSheetPreviewOpen] = useState(false);
 
   const fetchFiles = async () => {
     try {
@@ -158,41 +159,43 @@ const FileHistory = ({ refreshTrigger }) => {
         .join('\n')
     : '';
 
+  const buildExportData = () => filteredFiles.map(file => {
+    const details = getExtractionDetails(file);
+
+    return {
+      "File Name": file.name,
+      "Folder": file.folder || "Single Files",
+      "Upload Date": formatDate(file.uploadedAt),
+      "Size": formatSize(file.size),
+      "Name": details.name || "N/A",
+      "Email": details.email || file.extracted?.email || "N/A",
+      "Phone": details.phone || file.extracted?.phone || "N/A",
+      "LinkedIn": details.linkedin || "N/A",
+      "GitHub": details.github || "N/A",
+      "Portfolio": details.portfolioLink || "N/A",
+      "Project Links": joinLinks(details.projectLinks),
+      "All Links": joinLinks(details.links),
+      "Summary": details.bio || "",
+      "Skills": details.skills !== "No specific skills section found." ? details.skills : "",
+      "Experience": details.experience !== "No experience section found." ? details.experience : "",
+      "Education": details.education !== "No education section found." ? details.education : "",
+      "Projects": details.projects !== "No projects section found." ? details.projects : "",
+      "Certifications": details.certifications !== "No certifications section found." ? details.certifications : "",
+      "Achievements": details.achievements !== "No achievements section found." ? details.achievements : "",
+      "Languages": details.languages !== "No languages section found." ? details.languages : "",
+      "Extracurricular": details.extracurricular !== "No extra curricular activities section found." ? details.extracurricular : "",
+      "Interests": details.interests !== "No interests section found." ? details.interests : "",
+      "Raw Text Preview": details.rawTextPreview || ""
+    };
+  });
+
   const exportToExcel = () => {
     if (filteredFiles.length === 0) {
       alert("No data to export!");
       return;
     }
 
-    const exportData = filteredFiles.map(file => {
-      const details = getExtractionDetails(file);
-
-      return {
-        "File Name": file.name,
-        "Folder": file.folder || "Single Files",
-        "Upload Date": formatDate(file.uploadedAt),
-        "Size": formatSize(file.size),
-        "Name": details.name || "N/A",
-        "Email": details.email || file.extracted?.email || "N/A",
-        "Phone": details.phone || file.extracted?.phone || "N/A",
-        "LinkedIn": details.linkedin || "N/A",
-        "GitHub": details.github || "N/A",
-        "Portfolio": details.portfolioLink || "N/A",
-        "Project Links": joinLinks(details.projectLinks),
-        "All Links": joinLinks(details.links),
-        "Summary": details.bio || "",
-        "Skills": details.skills !== "No specific skills section found." ? details.skills : "",
-        "Experience": details.experience !== "No experience section found." ? details.experience : "",
-        "Education": details.education !== "No education section found." ? details.education : "",
-        "Projects": details.projects !== "No projects section found." ? details.projects : "",
-        "Certifications": details.certifications !== "No certifications section found." ? details.certifications : "",
-        "Achievements": details.achievements !== "No achievements section found." ? details.achievements : "",
-        "Languages": details.languages !== "No languages section found." ? details.languages : "",
-        "Extracurricular": details.extracurricular !== "No extra curricular activities section found." ? details.extracurricular : "",
-        "Interests": details.interests !== "No interests section found." ? details.interests : "",
-        "Raw Text Preview": details.rawTextPreview || ""
-      };
-    });
+    const exportData = buildExportData();
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
@@ -363,6 +366,9 @@ const FileHistory = ({ refreshTrigger }) => {
     )
   };
 
+  const sheetPreviewData = buildExportData();
+  const previewColumns = ["File Name", "Name", "Email", "Phone", "LinkedIn", "GitHub", "Portfolio", "Project Links", "All Links"];
+
   return (
     <section className="history-container" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto', padding: '2rem' }}>
       <div className="section-header" style={{ marginBottom: '2.5rem', borderBottom: '2px solid #f1f5f9', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -370,13 +376,60 @@ const FileHistory = ({ refreshTrigger }) => {
           <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-main)' }}>History & Archives</h2>
           <span style={{ color: 'var(--text-muted)' }}>{files.length} total files stored securely.</span>
         </div>
-        <button 
-          onClick={exportToExcel}
-          style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 600 }}
-        >
-          <Download size={18} /> Export to Excel
-        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setSheetPreviewOpen(true)}
+            disabled={filteredFiles.length === 0}
+            style={{ background: '#ffffff', color: 'var(--text-main)', border: '1px solid #dbe4ef', padding: '8px 16px', borderRadius: '8px', cursor: filteredFiles.length ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 600 }}
+          >
+            <Eye size={18} /> Preview Sheet
+          </button>
+          <button 
+            onClick={exportToExcel}
+            style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 600 }}
+          >
+            <Download size={18} /> Export to Excel
+          </button>
+        </div>
       </div>
+
+      {sheetPreviewOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div style={{ width: 'min(1180px, 96vw)', maxHeight: '86vh', background: '#ffffff', borderRadius: '12px', boxShadow: '0 24px 70px rgba(15, 23, 42, 0.22)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)' }}>Sheet Preview</h3>
+                <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{sheetPreviewData.length} row(s), filtered by the current search.</p>
+              </div>
+              <button type="button" onClick={() => setSheetPreviewOpen(false)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', display: 'grid', placeItems: 'center' }} title="Close preview">
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ overflow: 'auto', padding: '16px' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '980px', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr>
+                    {previewColumns.map(column => (
+                      <th key={column} style={{ position: 'sticky', top: 0, background: '#f8fafc', border: '1px solid #dbe4ef', padding: '10px', textAlign: 'left', color: 'var(--text-main)' }}>{column}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sheetPreviewData.map((row, rowIndex) => (
+                    <tr key={`${row["File Name"]}-${rowIndex}`}>
+                      {previewColumns.map(column => (
+                        <td key={column} style={{ border: '1px solid #e2e8f0', padding: '10px', color: 'var(--text-muted)', whiteSpace: column.includes('Links') ? 'pre-line' : 'normal', verticalAlign: 'top', maxWidth: column === 'File Name' ? '220px' : '260px', wordBreak: 'break-word' }}>
+                          {row[column] || ''}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {files.length === 0 ? (
         <div className="empty-state" style={{ textAlign: 'center', padding: '4rem', background: '#f8fafc', borderRadius: 'var(--radius-lg)', border: '2px dashed #cbd5e1' }}>
