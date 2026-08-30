@@ -104,8 +104,12 @@ const UploadZone = ({ onUploadSuccess }) => {
       if (onUploadSuccess) onUploadSuccess();
     } catch (error) {
       console.error('Upload error:', error);
-      const errorMsg = error.response?.data?.details || error.response?.data?.message || 'Failed to upload files. Please try again.';
-      addToast(errorMsg, 'error');
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        addToast('Session expired or invalid token. Please log out and log in again.', 'error');
+      } else {
+        const errorMsg = error.response?.data?.details || error.response?.data?.message || 'Failed to upload files. Please ensure backend server is running.';
+        addToast(errorMsg, 'error');
+      }
       setFiles(prev => prev.map(f => ({ ...f, progress: 0 })));
     } finally {
       setUploading(false);

@@ -299,6 +299,24 @@ app.post('/api/auth/supabase-login', async (req, res) => {
     res.status(400).json({ message: 'Supabase authentication is discontinued. Please log in with username/password.' });
 });
 
+const fetchGoogleUser = async (credential) => {
+    try {
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: GOOGLE_CLIENT_ID
+        });
+        const payload = ticket.getPayload();
+        return { email: payload['email'], name: payload['name'] };
+    } catch (e) {
+        const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${credential}` }
+        });
+        if (!resp.ok) throw new Error('Invalid Google token');
+        const data = await resp.json();
+        return { email: data.email, name: data.name || data.email };
+    }
+};
+
 // Google OAuth Login Route
 app.post('/api/auth/google-login', async (req, res) => {
     try {
@@ -308,14 +326,7 @@ app.post('/api/auth/google-login', async (req, res) => {
             return res.status(400).json({ message: 'Google credential is required' });
         }
 
-        const ticket = await googleClient.verifyIdToken({
-            idToken: credential,
-            audience: GOOGLE_CLIENT_ID
-        });
-
-        const payload = ticket.getPayload();
-        const email = payload['email'];
-        const name = payload['name'];
+        const { email, name } = await fetchGoogleUser(credential);
 
         const users = loadUsers();
         let username = Object.keys(users).find(u => users[u].email === email);
@@ -351,14 +362,7 @@ app.post('/api/auth/google-register', async (req, res) => {
             return res.status(400).json({ message: 'Google credential is required' });
         }
 
-        const ticket = await googleClient.verifyIdToken({
-            idToken: credential,
-            audience: GOOGLE_CLIENT_ID
-        });
-
-        const payload = ticket.getPayload();
-        const email = payload['email'];
-        const name = payload['name'];
+        const { email, name } = await fetchGoogleUser(credential);
 
         const users = loadUsers();
         let existingUsername = Object.keys(users).find(u => users[u].email === email);
