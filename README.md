@@ -1,103 +1,36 @@
 # Materix
 
-Materix is a secure material/document management web app. It lets users create an account, sign in, upload study or recruitment materials, organize single files and folders, view upload history, search stored documents, and download or delete files when needed.
+Materix is a secure material and candidate resume management web application built with React and Node.js. It allows users to register, sign in (locally or via Google OAuth), upload study/recruitment materials, extract resume bio & candidate information, search file history, share materials with friends via live chat, and manage account security.
 
-## Project Idea
+## Project Overview
 
-The idea behind Materix is to provide a simple and safe place to upload and manage important material files. The app focuses on secure document handling by validating uploads, blocking unsupported or suspicious files, anonymizing stored file names with UUIDs, and keeping upload metadata separate from the original file names.
+Materix provides a safe, organized workspace for material files. The app enforces file validation, blocks malware/executable binaries, anonymizes filenames using UUIDs, extracts resume data (education, skills, experience, contact details), and operates in **Local Storage Mode** with zero external database dependencies.
 
-It is useful for managing PDFs, DOCX files, TXT documents, resumes, study notes, assignments, or image attachments.
+## Key Features
 
-## Features
+- **Authentication**: Local username/password registration & login, plus Google OAuth sign-in.
+- **JWT Protection**: Secure 24-hour JWT tokens with automatic inactivity session timeouts.
+- **Material Upload Zone**: Single file or full folder drag-and-drop uploads.
+- **Supported Formats**: PDF, DOCX, TXT, ZIP, and Images (PNG, JPG, WEBP, GIF, SVG, BMP).
+- **ZIP Extraction**: Automated extraction of valid documents inside uploaded ZIP archives.
+- **Security Inspection**: Magic bytes binary check blocking executable binaries (MZ/ELF).
+- **Resume Extraction**: Automated extraction of candidate name, contact details, skills, experience, education, projects, and certifications from resumes.
+- **File History & Search**: Instant full-text search across filenames, candidate names, skills, and extracted text.
+- **Friends & Live Chat**: Search users, send friend requests, accept/decline requests, and send direct messages and file attachments.
+- **Local Storage Architecture**: All data stored locally on disk (`server/uploads/`) and structured JSON databases (`users.json`, `metadata.json`, `friends.json`, `messages.json`).
 
-- User registration and login with username/password
-- Google login support through Supabase OAuth
-- JWT-based protected API access
-- Upload single files or complete folders
-- Drag-and-drop upload UI
-- Supported formats: PDF, DOCX, TXT, ZIP, and Images (PNG, JPG, WEBP, GIF, SVG, BMP)
-- ZIP extraction for valid PDF/DOCX/TXT/Image files
-- File size limit of 10 MB per file
-- Empty-file and unsupported-file blocking
-- Binary inspection to block executable files disguised as documents (e.g. MZ/ELF signatures)
-- Upload rate limiting on the backend
-- Upload history with interactive file cards
-- Search by file name, folder, email, phone, or extracted summary
-- Download uploaded files directly
-- Delete uploaded files
-- Security dashboard with file count and storage usage
-- PDF/text parsing support for extracting email, phone, and summary-style content
+## Application URLs
 
-## Tools and Technologies
+- **GitHub Repository**: [https://github.com/stackpilotkulsum/Materix](https://github.com/stackpilotkulsum/Materix)
+- **Frontend App**: `http://localhost:5173`
+- **Backend API**: `http://localhost:5000`
 
-### Frontend
-- React
-- Vite
-- React Router DOM
-- Axios
-- Lucide React icons
-- Supabase JavaScript client
-- Custom premium styling (HSL tailored, dark overlays)
-
-### Backend
-- Node.js
-- Express.js
-- Multer for file uploads
-- JWT for authentication
-- bcryptjs for password hashing
-- CORS
-- dotenv
-- adm-zip for ZIP processing
-- pdf-parse for PDF text extraction
-
-## Folder Structure
-
-```text
-Materix/
-|-- client/
-|   |-- public/
-|   |   |-- favicon.svg
-|   |   `-- icons.svg
-|   |-- src/
-|   |   |-- assets/
-|   |   |   |-- hero.png
-|   |   |   |-- react.svg
-|   |   |   `-- vite.svg
-|   |   |-- components/
-|   |   |   |-- FileHistory.jsx
-|   |   |   |-- Header.jsx
-|   |   |   |-- Login.jsx
-|   |   |   |-- Register.jsx
-|   |   |   |-- Settings.jsx
-|   |   |   `-- UploadZone.jsx
-|   |   |-- api.js
-|   |   |-- App.css
-|   |   |-- App.jsx
-|   |   |-- index.css
-|   |   |-- main.jsx
-|   |   `-- supabase.js
-|   |-- eslint.config.js
-|   |-- index.html
-|   |-- package.json
-|   `-- vite.config.js
-|-- server/
-|   |-- server.js
-|   |-- users.json
-|   |-- package.json
-|   `-- package-lock.json
-|-- GOOGLE_OAUTH_SETUP.md
-|-- package-lock.json
-|-- script.js
-|-- style.css
-|-- test.pdf
-`-- README.md
-```
+---
 
 ## Installation and Setup
 
 ### Prerequisites
-Install these before running the project:
-- Node.js
+- Node.js (v18+)
 - npm
 - Git
 
@@ -107,71 +40,51 @@ git clone https://github.com/stackpilotkulsum/Materix.git
 cd Materix
 ```
 
-### 2. Install Backend Dependencies
+### 2. Install & Start Backend
 ```bash
 cd server
 npm install
+node server.js
 ```
+*Backend runs on `http://localhost:5000`*
 
-### 3. Install Frontend Dependencies
-Open a new terminal:
+### 3. Install & Start Frontend
+In a new terminal:
 ```bash
 cd client
 npm install
-```
-
-## Environment Variables
-
-Create a `.env` file inside `server/`:
-```env
-PORT=5000
-SUPABASE_URL=https://uhtdwatcfiqzrzcpzmf.supabase.co
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
-FRONTEND_URL=http://localhost:5173
-SESSION_SECRET=your_jwt_session_secret
-```
-
-Create a `.env` file inside `client/`:
-```env
-VITE_API_URL=http://localhost:5000
-VITE_SUPABASE_URL=https://uhtdwatcfiqzrzcpzmf.supabase.co
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_AUTH_REDIRECT_URL=http://localhost:5173
-```
-
-## Run the Project Locally
-
-### Start the Backend
-From the `server/` folder:
-```bash
-npm start
-```
-The backend runs on: `http://localhost:5000`
-
-### Start the Frontend
-From the `client/` folder:
-```bash
 npm run dev
 ```
-The frontend runs on: `http://localhost:5173`
+*Frontend runs on `http://localhost:5173`*
 
-## API Routes
+---
 
-| Method | Route | Description |
+## API Documentation
+
+| Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/` | Backend health message |
-| `POST` | `/api/auth/register` | Register a new user |
-| `POST` | `/api/auth/login` | Login with username and password |
-| `POST` | `/api/auth/supabase-login` | Exchange Supabase session for app JWT |
-| `POST` | `/api/auth/google-login` | Login using Google credential |
-| `POST` | `/api/auth/google-register` | Register using Google credential |
-| `POST` | `/api/upload` | Upload protected study/material files |
-| `GET` | `/api/files` | Get authenticated user's uploaded files |
-| `DELETE` | `/api/files/:id` | Delete an uploaded file |
+| `GET` | `/` | Backend health check |
+| `POST` | `/api/auth/register` | Register a new account |
+| `POST` | `/api/auth/login` | Authenticate with username/password |
+| `POST` | `/api/auth/google-login` | Authenticate via Google OAuth token |
+| `POST` | `/api/auth/google-register` | Register via Google OAuth token |
+| `POST` | `/api/upload` | Upload material files (PDF, DOCX, Images, ZIP) |
+| `GET` | `/api/files` | Get user's uploaded materials & extracted data |
+| `DELETE` | `/api/files/:id` | Delete a material file and its metadata |
+| `POST` | `/api/files/reprocess` | Re-parse uploaded resumes |
+| `GET` | `/api/friends/search` | Search users by username |
+| `POST` | `/api/friends/request` | Send a friend request |
+| `GET` | `/api/friends/requests` | Get pending incoming/outgoing friend requests |
+| `POST` | `/api/friends/respond` | Accept or reject a friend request |
+| `GET` | `/api/friends` | Get list of accepted friends |
+| `GET` | `/api/chat/active-chats` | Get active chat conversations |
+| `GET` | `/api/chat/messages/:friend` | Get chat history with a friend |
+| `POST` | `/api/chat/messages` | Send a chat message |
+| `POST` | `/api/chat/upload` | Upload a file attachment for chat |
+
+---
 
 ## Author
 
 Materix is developed by Kulsum Malik.
-
-GitHub repository: <https://github.com/stackpilotkulsum/Materix>
+GitHub: [https://github.com/stackpilotkulsum/Materix](https://github.com/stackpilotkulsum/Materix)
