@@ -1,0 +1,14 @@
+{
+  "mango": {
+    "password": "$2b$10$saGU6WRsbyD4yZT6cU66XuTHB205LVwNaCOMeKU7jsZTiyovQU4XG",
+    "createdAt": "2026-05-06T05:40:37.126Z"
+  },
+  "hello": {
+    "password": "$2b$10$./dr9u4HOtX53.qKjgiE3OYI8UH5O7yvzTXPmhcTEaQ8FFhmDKHkS",
+    "createdAt": "2026-05-06T05:41:49.684Z"
+  },
+  "apple": {
+    "password": "$2b$10$/9bzISGBO25Oq2pRhNMahuR1fDhk6RGALJpYlw4eOyFXnA6bKT93G",
+    "createdAt": "2026-05-06T05:42:50.568Z"
+  }
+}

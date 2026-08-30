@@ -1,0 +1,19 @@
+-- Alter materials table to add columns for extracted resume data
+ALTER TABLE public.materials
+ADD COLUMN IF NOT EXISTS candidate_name TEXT,
+ADD COLUMN IF NOT EXISTS candidate_email TEXT,
+ADD COLUMN IF NOT EXISTS candidate_phone TEXT,
+ADD COLUMN IF NOT EXISTS linkedin TEXT,
+ADD COLUMN IF NOT EXISTS github TEXT,
+ADD COLUMN IF NOT EXISTS portfolio_link TEXT,
+ADD COLUMN IF NOT EXISTS summary TEXT,
+ADD COLUMN IF NOT EXISTS skills TEXT,
+ADD COLUMN IF NOT EXISTS experience TEXT,
+ADD COLUMN IF NOT EXISTS education TEXT,
+ADD COLUMN IF NOT EXISTS projects TEXT,
+ADD COLUMN IF NOT EXISTS certifications TEXT,
+ADD COLUMN IF NOT EXISTS achievements TEXT,
+ADD COLUMN IF NOT EXISTS languages TEXT,
+ADD COLUMN IF NOT EXISTS extracurricular TEXT,
+ADD COLUMN IF NOT EXISTS interests TEXT,
+ADD COLUMN IF NOT EXISTS raw_text_preview TEXT;
