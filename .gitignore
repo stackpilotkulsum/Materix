@@ -24,10 +24,15 @@ build/
 .DS_Store
 Thumbs.db
 
-# Uploads
+# Uploads (ephemeral binary files - NOT committed, Render disk is temporary)
 uploads/
+server/uploads/
 mm/server/uploads/*
 !mm/server/uploads/.gitkeep
+
+# Data directory (JSON databases - COMMITTED so they survive Render redeploys)
+!server/data/
+!server/data/**
 
 # Logs
 logs/

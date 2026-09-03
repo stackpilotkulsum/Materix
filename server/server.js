@@ -75,11 +75,16 @@ app.use(cors({
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Ensure uploads directory exists
+// Ensure uploads and data directories exist on startup
 const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+// Seed empty data files if missing (first run on fresh Render deploy)
+const seedFile = (filePath, emptyVal) => { if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, emptyVal); };
+seedFile(path.join(dataDir, 'users.json'), '{}');
+seedFile(path.join(dataDir, 'friends.json'), '[]');
+seedFile(path.join(dataDir, 'messages.json'), '[]');
 
 // JWT Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -99,9 +104,9 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// User management helpers (local JSON storage)
+// User management helpers (local JSON storage in data/)
 const loadUsers = () => {
-    const usersPath = path.join(__dirname, 'users.json');
+    const usersPath = path.join(dataDir, 'users.json');
     if (fs.existsSync(usersPath)) {
         try {
             return JSON.parse(fs.readFileSync(usersPath));
@@ -113,13 +118,13 @@ const loadUsers = () => {
 };
 
 const saveUsers = (users) => {
-    const usersPath = path.join(__dirname, 'users.json');
+    const usersPath = path.join(dataDir, 'users.json');
     fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
 };
 
-// Friends and Chat helpers (local JSON storage)
+// Friends and Chat helpers (local JSON storage in data/)
 const loadFriends = () => {
-    const friendsPath = path.join(__dirname, 'friends.json');
+    const friendsPath = path.join(dataDir, 'friends.json');
     if (fs.existsSync(friendsPath)) {
         try {
             return JSON.parse(fs.readFileSync(friendsPath));
@@ -131,12 +136,12 @@ const loadFriends = () => {
 };
 
 const saveFriends = (friends) => {
-    const friendsPath = path.join(__dirname, 'friends.json');
+    const friendsPath = path.join(dataDir, 'friends.json');
     fs.writeFileSync(friendsPath, JSON.stringify(friends, null, 2));
 };
 
 const loadMessages = () => {
-    const messagesPath = path.join(__dirname, 'messages.json');
+    const messagesPath = path.join(dataDir, 'messages.json');
     if (fs.existsSync(messagesPath)) {
         try {
             return JSON.parse(fs.readFileSync(messagesPath));
@@ -148,7 +153,7 @@ const loadMessages = () => {
 };
 
 const saveMessages = (messages) => {
-    const messagesPath = path.join(__dirname, 'messages.json');
+    const messagesPath = path.join(dataDir, 'messages.json');
     fs.writeFileSync(messagesPath, JSON.stringify(messages, null, 2));
 };
 
@@ -177,8 +182,9 @@ const upload = multer({
 
 // Helper to load metadata for a user
 const loadMetadata = (username) => {
-    const userDir = path.join(uploadDir, username);
-    const metadataPath = path.join(userDir, 'metadata.json');
+    // Metadata stored in data/<username>/metadata.json (survives Render restarts)
+    const userDataDir = path.join(dataDir, username);
+    const metadataPath = path.join(userDataDir, 'metadata.json');
     if (fs.existsSync(metadataPath)) {
         try {
             return JSON.parse(fs.readFileSync(metadataPath));
@@ -186,16 +192,26 @@ const loadMetadata = (username) => {
             return {};
         }
     }
+    // Backwards compat: try old location uploads/<username>/metadata.json
+    const legacyPath = path.join(uploadDir, username, 'metadata.json');
+    if (fs.existsSync(legacyPath)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(legacyPath));
+            // Migrate to new location
+            saveMetadata(username, data);
+            return data;
+        } catch (e) {}
+    }
     return {};
 };
 
 // Helper to save metadata for a user
 const saveMetadata = (username, metadata) => {
-    const userDir = path.join(uploadDir, username);
-    if (!fs.existsSync(userDir)) {
-        fs.mkdirSync(userDir, { recursive: true });
+    const userDataDir = path.join(dataDir, username);
+    if (!fs.existsSync(userDataDir)) {
+        fs.mkdirSync(userDataDir, { recursive: true });
     }
-    const metadataPath = path.join(userDir, 'metadata.json');
+    const metadataPath = path.join(userDataDir, 'metadata.json');
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 };
 
