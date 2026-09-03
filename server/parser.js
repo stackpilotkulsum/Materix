@@ -479,36 +479,151 @@ const parseResume = async (filePath, originalName) => {
             }
         } else if (imageExts.includes(ext)) {
             try {
-                console.log(`[OCR] Running Tesseract on image: ${originalName}`);
-                const preprocessedBuffer = await sharp(filePath)
+                console.log(`[OCR] Running enhanced multi-strategy Tesseract on image: ${originalName}`);
+                
+                // Get image metadata for smart preprocessing
+                const imgMetadata = await sharp(filePath).metadata();
+                const imgWidth = imgMetadata.width || 1000;
+                const imgHeight = imgMetadata.height || 1000;
+                console.log(`[OCR] Image dimensions: ${imgWidth}x${imgHeight}, format: ${imgMetadata.format}`);
+
+                // Target width: upscale small images aggressively for better OCR
+                const targetWidth = Math.max(3200, imgWidth * 2);
+
+                // Strategy 1: High-contrast greyscale with moderate threshold
+                const makeStrategy1 = () => sharp(filePath)
+                    .resize({ width: targetWidth, withoutEnlargement: false })
                     .greyscale()
                     .normalize()
-                    .sharpen({ sigma: 1.5 })
-                    .threshold(140)
-                    .resize({ width: 2400, withoutEnlargement: true })
+                    .sharpen({ sigma: 1.0 })
+                    .threshold(128)
                     .png()
                     .toBuffer();
 
-                console.log(`[OCR] Preprocessed image: ${preprocessedBuffer.length} bytes`);
+                // Strategy 2: Normalized greyscale WITHOUT threshold (preserves gradient text)
+                const makeStrategy2 = () => sharp(filePath)
+                    .resize({ width: targetWidth, withoutEnlargement: false })
+                    .greyscale()
+                    .normalize()
+                    .sharpen({ sigma: 0.5 })
+                    .png()
+                    .toBuffer();
 
-                const { data: { text: extractedText, confidence } } = await Tesseract.recognize(preprocessedBuffer, 'eng', {
-                    tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-                    tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY,
-                    preserve_interword_spaces: '1',
-                });
-                text = extractedText || '';
-                console.log(`[OCR] Image OCR confidence: ${confidence}%, extracted ${text.length} chars`);
+                // Strategy 3: High threshold for light backgrounds
+                const makeStrategy3 = () => sharp(filePath)
+                    .resize({ width: targetWidth, withoutEnlargement: false })
+                    .greyscale()
+                    .normalize()
+                    .sharpen({ sigma: 2.0 })
+                    .threshold(180)
+                    .png()
+                    .toBuffer();
 
-                if (text.length < 50) {
-                    console.log(`[OCR] Preprocessed OCR too short (${text.length} chars), retrying with raw image...`);
-                    const { data: { text: rawText } } = await Tesseract.recognize(filePath, 'eng', {
-                        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-                        preserve_interword_spaces: '1',
-                    });
-                    if ((rawText || '').length > text.length) {
-                        text = rawText;
+                // Strategy 4: Inverted colors (for dark background resumes)
+                const makeStrategy4 = () => sharp(filePath)
+                    .resize({ width: targetWidth, withoutEnlargement: false })
+                    .greyscale()
+                    .normalize()
+                    .negate()
+                    .threshold(140)
+                    .png()
+                    .toBuffer();
+
+                // Strategy 5: Raw upscaled image with no processing
+                const makeStrategy5 = () => sharp(filePath)
+                    .resize({ width: targetWidth, withoutEnlargement: false })
+                    .png()
+                    .toBuffer();
+
+                const strategies = [
+                    { name: 'Normalized (no threshold)', make: makeStrategy2 },
+                    { name: 'Moderate threshold (128)', make: makeStrategy1 },
+                    { name: 'High threshold (180)', make: makeStrategy3 },
+                    { name: 'Raw upscaled', make: makeStrategy5 },
+                    { name: 'Inverted (dark bg)', make: makeStrategy4 },
+                ];
+
+                let bestText = '';
+                let bestConfidence = 0;
+                let bestStrategy = '';
+
+                for (const strategy of strategies) {
+                    try {
+                        console.log(`[OCR] Trying strategy: ${strategy.name}...`);
+                        const buffer = await strategy.make();
+
+                        const { data: { text: ocrText, confidence: ocrConf } } = await Tesseract.recognize(buffer, 'eng', {
+                            tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+                            tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY,
+                            preserve_interword_spaces: '1',
+                        });
+
+                        const cleaned = (ocrText || '').trim();
+                        const conf = ocrConf || 0;
+                        console.log(`[OCR]   -> ${strategy.name}: ${cleaned.length} chars, ${conf.toFixed(1)}% confidence`);
+
+                        // Pick the strategy that yields the most text with decent confidence
+                        // Weight: longer text is strongly preferred, confidence is secondary
+                        const score = cleaned.length * (1 + conf / 100);
+                        const bestScore = bestText.length * (1 + bestConfidence / 100);
+
+                        if (score > bestScore) {
+                            bestText = cleaned;
+                            bestConfidence = conf;
+                            bestStrategy = strategy.name;
+                        }
+
+                        // If we got really good results, stop early
+                        if (cleaned.length > 500 && conf > 75) {
+                            console.log(`[OCR]   -> Good enough result, skipping remaining strategies.`);
+                            break;
+                        }
+                    } catch (stratErr) {
+                        console.warn(`[OCR]   -> Strategy "${strategy.name}" failed:`, stratErr.message);
                     }
                 }
+
+                // Also try PSM.SINGLE_BLOCK mode on the best strategy if text is still short
+                if (bestText.length < 200) {
+                    try {
+                        console.log(`[OCR] Text still short, trying SINGLE_BLOCK mode...`);
+                        const buffer = await makeStrategy2();
+                        const { data: { text: blockText } } = await Tesseract.recognize(buffer, 'eng', {
+                            tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+                            tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY,
+                            preserve_interword_spaces: '1',
+                        });
+                        if ((blockText || '').trim().length > bestText.length) {
+                            bestText = (blockText || '').trim();
+                            bestStrategy = 'SINGLE_BLOCK fallback';
+                        }
+                    } catch (e) {
+                        console.warn('[OCR] SINGLE_BLOCK fallback failed:', e.message);
+                    }
+                }
+
+                console.log(`[OCR] Best strategy: "${bestStrategy}" — ${bestText.length} chars, ${bestConfidence.toFixed(1)}% confidence`);
+
+                // Post-process OCR text to fix common misreads
+                text = bestText
+                    // Fix common OCR misreads of @ symbol
+                    .replace(/\s*\(at\)\s*/gi, '@')
+                    .replace(/\s*\[at\]\s*/gi, '@')
+                    .replace(/(\w)©(\w)/g, '$1@$2')
+                    .replace(/(\w)\s*@\s*(\w)/g, '$1@$2')
+                    // Fix common OCR misreads of dots in emails/URLs  
+                    .replace(/(\w)\s*\.\s*com\b/gi, '$1.com')
+                    .replace(/(\w)\s*\.\s*org\b/gi, '$1.org')
+                    .replace(/(\w)\s*\.\s*net\b/gi, '$1.net')
+                    .replace(/(\w)\s*\.\s*io\b/gi, '$1.io')
+                    // Fix phone number OCR artifacts
+                    .replace(/[oO](\d{2,})/g, '0$1')
+                    .replace(/(\d)[lI](\d)/g, '$11$2')
+                    // Clean up OCR noise characters
+                    .replace(/[|]{2,}/g, '')
+                    .replace(/[~`]{2,}/g, '')
+                    .replace(/_{3,}/g, '');
+
             } catch (ocrErr) {
                 console.error('Tesseract error:', ocrErr.message);
                 try {
