@@ -4,7 +4,7 @@ import {
   FileText, Download, UserCheck, AlertCircle, Clock, Loader2,
   FolderLock, Database, FolderOpen, Share2, Users
 } from 'lucide-react';
-import api from '../api';
+import api, { getDownloadUrl } from '../api';
 
 const ChatSection = () => {
   const [currentUser, setCurrentUser] = useState('');
@@ -312,16 +312,7 @@ const ChatSection = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
-  const getDownloadUrl = (url) => {
-    if (!url) return '#';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    try {
-      const base = api.defaults.baseURL || window.location.origin;
-      return new URL(url, base).toString();
-    } catch {
-      return url;
-    }
-  };
+
 
   // Filter vault files by search query
   const filteredVaultFiles = vaultFiles.filter(file => 

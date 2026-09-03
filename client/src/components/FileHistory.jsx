@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileText, Download, Calendar, HardDrive, Search, Trash2, X, Folder as FolderIcon, Image as ImageIcon, Eye } from 'lucide-react';
-import api from '../api';
+import api, { getDownloadUrl } from '../api';
 
 const FileHistory = ({ refreshTrigger }) => {
   const [files, setFiles] = useState([]);
@@ -71,15 +71,7 @@ const FileHistory = ({ refreshTrigger }) => {
     });
   };
 
-  const getDownloadUrl = (url) => {
-    if (!url) return url;
-    try {
-      const base = api.defaults.baseURL || window.location.origin;
-      return new URL(url, base).toString();
-    } catch {
-      return url;
-    }
-  };
+
 
   if (loading) return <div className="loading">Loading history...</div>;
 
