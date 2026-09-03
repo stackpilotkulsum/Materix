@@ -312,6 +312,17 @@ const ChatSection = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
+  const getDownloadUrl = (url) => {
+    if (!url) return '#';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    try {
+      const base = api.defaults.baseURL || window.location.origin;
+      return new URL(url, base).toString();
+    } catch {
+      return url;
+    }
+  };
+
   // Filter vault files by search query
   const filteredVaultFiles = vaultFiles.filter(file => 
     file.original_name?.toLowerCase().includes(vaultSearchQuery.toLowerCase()) ||
@@ -616,11 +627,12 @@ const ChatSection = () => {
                                 </span>
                               </div>
                               <a 
-                                href={msg.file_url} 
+                                href={getDownloadUrl(msg.file_url)} 
                                 target="_blank" 
                                 rel="noopener noreferrer" 
                                 className="msg-file-download"
                                 title="Download Attachment"
+                                download={msg.file_name || true}
                               >
                                 <Download size={16} />
                               </a>
